@@ -1,0 +1,46 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 23
+    buildToolsVersion "23.0.2"
+//    dexOptions {
+//        preDexLibraries = false
+//    }
+
+//    productFlavors {
+//        // Define separate dev and prod product flavors.
+//        dev {
+//            // dev utilizes minSDKVersion = 21 to allow the Android gradle plugin
+//            // to pre-dex each module and produce an APK that can be tested on
+//            // Android Lollipop without time consuming dex merging processes.
+//            minSdkVersion 23
+//        }
+//    }
+
+    defaultConfig {
+        applicationId "net.yishanhe.wearlock"
+        minSdkVersion 18
+        targetSdkVersion 23
+        versionCode 1
+        versionName "1.0"
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(include: ['*.jar'], dir: 'libs')
+    wearApp project(':wear')
+    compile project(':OFDM')
+    compile 'com.android.support:design:23.2.0'
+    compile 'com.jakewharton:butterknife:7.0.1'
+    compile 'com.github.clans:fab:1.6.2'
+    compile project(':wearcomm')
+    compile 'com.android.support:multidex:1.0.1'
+    compile 'org.jboss.aerogear:aerogear-otp-java:1.0.0.M1'
+}

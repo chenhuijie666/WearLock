@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    android:title="Settings" >
+
+    <PreferenceCategory
+        android:title="Acoustics">
+
+        <ListPreference
+            android:title="Sampling Rate"
+            android:key="sampling_rate"
+            android:defaultValue="44100"
+            android:summary="%s"
+            android:entries="@array/sample_rate_entries"
+            android:entryValues="@array/sample_rate_entry_values" />
+
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="OFDM">
+
+        <PreferenceScreen
+            android:title="Preamble"
+            android:summary="Preamble-related settings">
+
+            <EditTextPreference
+                android:title="Preamble Size"
+                android:key="preamble_size"
+                android:defaultValue="256" />
+
+            <EditTextPreference
+                android:title="Preamble Start Freq."
+                android:key="preamble_start_freq"
+                android:defaultValue="1000.0" />
+
+            <EditTextPreference
+                android:title="Preamble Freq. Range"
+                android:key="preamble_freq_range"
+                android:defaultValue="1000.0" />
+
+            <EditTextPreference
+                android:title="Post Preamble Guard Size"
+                android:key="post_preamble_guard_size"
+                android:defaultValue="1024" />
+
+        </PreferenceScreen>
+
+        <PreferenceScreen
+            android:title="Guard">
+
+            <ListPreference
+                android:title="Guard Type"
+                android:key="guard_type"
+                android:defaultValue="0"
+                android:summary="%s"
+                android:entries="@array/guard_type_entries"
+                android:entryValues="@array/guard_type_entry_values" />
+
+            <EditTextPreference
+                android:title="Guard Size"
+                android:key="guard_size"
+                android:defaultValue="128" />
+
+        </PreferenceScreen>
+
+        <EditTextPreference
+            android:title="FFT Size"
+            android:key="fft_size"
+            android:defaultValue="256" />
+
+
+        <PreferenceScreen
+            android:title="Sub-Channel">
+
+            <ListPreference
+                android:title="Modulation"
+                android:key="modulation_type"
+                android:defaultValue="0"
+                android:summary="%s"
+                android:entries="@array/modulation_entries"
+                android:entryValues="@array/modulation_entry_values" />
+
+            <CheckBoxPreference
+                android:key="channel_test_mode"
+                android:defaultValue="false"
+                android:summary="Fix input."
+                android:title="Channel Test Mode"/>
+
+            <CheckBoxPreference
+                android:key="adaptive_mod"
+                android:defaultValue="false"
+                android:title="Adaptive Modulation"/>
+
+            <CheckBoxPreference
+                android:key="channel_est"
+                android:defaultValue="false"
+                android:title="Channel Estimation"/>
+
+            <EditTextPreference
+                android:title="Pilot Sub-Channel Index"
+                android:key="pilot_index"
+                android:summary="Entering index with spaces."
+                android:defaultValue="7,11,15,19,23,27,31,35" />
+
+            <EditTextPreference
+                android:title="Data Sub-Channel Index"
+                android:key="data_index"
+                android:summary="Entering index with spaces."
+                android:defaultValue="16,17,18,20,21,22,24,25,26,28,29,30" />
+
+
+        </PreferenceScreen>
+
+
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="WearLock">
+        <CheckBoxPreference
+            android:key="survey_mode"
+            android:defaultValue="false"
+            android:title="Survey Mode"/>
+    </PreferenceCategory>
+
+
+</PreferenceScreen>
