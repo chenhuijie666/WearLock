@@ -2,9 +2,6 @@ package net.yishanhe.wearlock;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.media.AudioFormat;
-import android.media.AudioManager;
-import android.media.AudioTrack;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
@@ -19,13 +16,11 @@ import net.yishanhe.ofdm.Guard.GuardType;
 import net.yishanhe.ofdm.Preamble;
 import net.yishanhe.ofdm.Synchronization;
 import net.yishanhe.utils.DSPUtils;
-import net.yishanhe.wearcomm.events.SendMessageEvent;
-import net.yishanhe.wearlock.events.StatusMessageEvent;
+import net.yishanhe.wearlock.events.MessageEvent;
 
 import org.apache.commons.math3.complex.Complex;
 import org.greenrobot.eventbus.EventBus;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -55,6 +50,7 @@ public class Modem {
     private boolean isAdaptiveModulationON;
     private boolean isChannelEstimationON;
     private boolean isChannelTestModeON;
+    private boolean isDebugOutputON;
 
     private int guardSize;
     private int fftSize;
@@ -83,7 +79,6 @@ public class Modem {
 
     /**
      * Will handling the OFDM primitives and Android Audio IO
-     * @param context
      */
     private Modem(Context context) {
         this.context = context;
@@ -100,11 +95,11 @@ public class Modem {
     }
 
     public void LoadParameter() {
-
         this.sampleRateInHZ = Integer.parseInt(prefs.getString("sampling_rate","44100"));
         this.isAdaptiveModulationON = prefs.getBoolean("adaptive_mod",false);
         this.isChannelEstimationON = prefs.getBoolean("channel_est",false);
         this.isChannelTestModeON = prefs.getBoolean("channel_test_mode",false);
+        this.isDebugOutputON = prefs.getBoolean("debug_output",true);
         this.guardSize = Integer.parseInt(prefs.getString("guard_size","128"));
         String[] pilotIndex = prefs.getString("pilot_index","7,11,15,19,23,27,31,35").split(",");
         this.pilotSubChannelIdx = new ArrayList<>(pilotIndex.length);
@@ -125,7 +120,7 @@ public class Modem {
         int modulationTypeIndex = Integer.parseInt(prefs.getString("modulation_type","0"));
         this.modulationType = ModulationType.values()[modulationTypeIndex];
         this.fftSize = Integer.parseInt(prefs.getString("fft_size","256"));
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "Parameters loaded."));
+        Log.d(TAG, "LoadParameter: parameters loaded.");
     }
 
     // add listener to reload parameter.
@@ -134,14 +129,14 @@ public class Modem {
         this.constellation = new Constellation(modulationType);
         this.channel = new Channel(fftSize, sampleRateInHZ, pilotSubChannelIdx, dataSubChannelIdx);
         this.frame = new Frame(fftSize, pilotSubChannelIdx, dataSubChannelIdx);
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "Prepared."));
+        EventBus.getDefault().post(new MessageEvent(TAG, "Prepared."));
     }
 
     public void makePreamble() {
         this.preamble = new Preamble(preambleSize, postPreambleGuardSize, preambleStartFreq, preambleFreqRange, sampleRateInHZ);
         this.adaptiveModulation = new AdaptiveModulation(preamble);
         preambleInShort = doubleToAudioShort(scaleDoubles(preamble.getPreamble()));
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "Preamble is made."));
+        EventBus.getDefault().post(new MessageEvent(TAG, "Preamble is made."));
     }
 
     public synchronized void makeModulated(String inputPin) {
@@ -156,7 +151,7 @@ public class Modem {
             if (modulationType == ModulationType.EightPSK || modulationType == ModulationType.EightQAM) {
                 inputPin = "100001010111101110000011100001010111";
             }
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, inputPin, "/fixed_input"));
+            EventBus.getDefault().post(new MessageEvent(TAG, inputPin, "/fixed_input"));
         }
         // @TODO: use the api in chunk class.
 
@@ -200,7 +195,7 @@ public class Modem {
 //            e.printStackTrace();
 //        }
         modulatedInShort = doubleToAudioShort(modulated);
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "Modulated is made."));
+        EventBus.getDefault().post(new MessageEvent(TAG, "Modulated audio track is made.","/UPDATE_STATUS"));
 
     }
 
@@ -212,7 +207,7 @@ public class Modem {
 
 
 //        if ( (start+modulated.length) > inputLen) {
-//            EventBus.getDefault().post(new StatusMessageEvent(TAG, "No signal to demodulated"));
+//            EventBus.getDefault().post(new MessageEvent(TAG, "No signal to demodulated"));
 //            return "no signal to demodulate.";
 //        }
 //
@@ -223,7 +218,7 @@ public class Modem {
         Chunk target = whole.getSubChunk(start, Math.min(end+modulated.length, whole.getDoubleBuffer().length));
 
         int delay = Synchronization.preambleTimeSync(preamble.getPreamble(), target.getDoubleBuffer());
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "sync fix " + delay + " samples"));
+        EventBus.getDefault().post(new MessageEvent(TAG, "synchronization needs to skip " + Math.abs(delay) + " samples", "/UPDATE_STATUS"));
         // adjust sync
         if ( (Math.abs(delay)+start) > inputLen) {
             return "bad signal. aborted.";
@@ -248,49 +243,52 @@ public class Modem {
             // can dump to file here.
             Complex[] fftBuffer = DSPUtils.fft(ofdmOneFrame, fftSize);
 
-            System.out.println("DATA");
-            for (int j = 0; j < fftBuffer.length; j++) {
-                if (channel.getDataSubChannelIdx().contains(j)){
-                    double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-                    if (phaseAngle<0) {
-                        phaseAngle += 2*Math.PI;
+            if (isDebugOutputON) {
+                System.out.println("DATA");
+                for (int j = 0; j < fftBuffer.length; j++) {
+                    if (channel.getDataSubChannelIdx().contains(j)){
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        if (phaseAngle<0) {
+                            phaseAngle += 2*Math.PI;
+                        }
+                        System.out.println("complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
                     }
-                    System.out.println("complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                }
+                System.out.println("PILOT");
+                for (int j = 0; j < fftBuffer.length; j++) {
+                    // get data
+                    if (channel.getPilotSubChannelIdx().contains(j)){
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        System.out.println("complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                    }
                 }
             }
-            System.out.println("PILOT");
-            for (int j = 0; j < fftBuffer.length; j++) {
-                // get data
-                if (channel.getPilotSubChannelIdx().contains(j)){
-                    double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-                    System.out.println("complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
-                }
-            }
+
 
             channel.setChannelBuffer(fftBuffer);
             channel.estimate();
+            EventBus.getDefault().post(new MessageEvent(TAG, "SNR channel estimated: "+channel.getSNRinDB(),"/UPDATE_STATUS"));
             Complex[] equalized = channel.getEqualized();
-            System.out.println("Equalized DATA");
-            for (int j = 0; j < equalized.length; j++) {
-                double phaseAngle = Math.atan2(equalized[j].getImaginary(), equalized[j].getReal());
-                if (phaseAngle<0) {
-                    phaseAngle += 2*Math.PI;
+
+            if (isDebugOutputON) {
+                System.out.println("Equalized DATA");
+                for (int j = 0; j < equalized.length; j++) {
+                    double phaseAngle = Math.atan2(equalized[j].getImaginary(), equalized[j].getReal());
+                    if (phaseAngle<0) {
+                        phaseAngle += 2*Math.PI;
+                    }
+                    System.out.println("complex: "+equalized[j].toString()+" amp:"+equalized[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
                 }
-                System.out.println("complex: "+equalized[j].toString()+" amp:"+equalized[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
             }
+
             result += constellation.constellationDeMapping(equalized);
 
-
         }
-        // TODO: add multiple frame support
-
-
 
         return result;
 
     }
 
-    // public
 
     public double detectPreamble(double[] input) {
         return preamble.detectPreamble(input);
@@ -336,4 +334,5 @@ public class Modem {
     public double[] getPreamble() {
         return preamble.getPreamble();
     }
+
 }
