@@ -58,7 +58,7 @@ public class Channel {
         for (int i = 0; i < pilotSubChannelBuffer.length; i++) {
             pilotSubChannelBuffer[i] = subChannels.get(pilotSubChannelIdx.get(i)).getValue();
         }
-        System.out.println("channel getpilotsubchannelbuffer size: "+pilotSubChannelBuffer.length);
+//        System.out.println("channel getpilotsubchannelbuffer size: "+pilotSubChannelBuffer.length);
         return pilotSubChannelBuffer;
     }
 
@@ -204,15 +204,13 @@ public class Channel {
     public void estimate() {
         // printed out here
         Complex[] channelEstBuffer  =  DSPUtils.interpolate(getPilotSubChannelBuffer(), interpolationSize);
-        System.out.println("channel est len: "+channelEstBuffer.length); // 32 is wrong. fix
-        System.out.println("subchannels len: "+subChannels.size());
-//        for (int i = 0; i < fftSize; i++) {
-//           subChannels.get(i).setEst(channelEstBuffer[i]);
-//        }
+//        System.out.println("channel est len: "+channelEstBuffer.length); // 32 is wrong. fix
+//        System.out.println("subchannels len: "+subChannels.size());
+
 
         for (int i = 0;  i < channelEstBuffer.length; i++) {
-            System.out.println("update est for "+subChannels.get(i).getIdx()+", old "+subChannels.get(i+pilotSubChannelIdx.get(0)).getValue().toString()+", est "+channelEstBuffer[i].toString()
-                    +", equalized "+subChannels.get(i+pilotSubChannelIdx.get(0)).getValue().multiply(channelEstBuffer[i].reciprocal()));
+//            System.out.println("update est for "+subChannels.get(i).getIdx()+", old "+subChannels.get(i+pilotSubChannelIdx.get(0)).getValue().toString()+", est "+channelEstBuffer[i].toString()
+//                    +", equalized "+subChannels.get(i+pilotSubChannelIdx.get(0)).getValue().multiply(channelEstBuffer[i].reciprocal()));
             subChannels.get(i+pilotSubChannelIdx.get(0)).setEst(channelEstBuffer[i]);
         }
     }
@@ -224,6 +222,25 @@ public class Channel {
             equalized[i] = subChannel.getValue().multiply(subChannel.getEst().reciprocal());
         }
         return equalized;
+    }
+
+    public double getSNRinDB() {
+
+        double signalLocalEnergy = 0.0;
+        double noiseLocalEnergy = 0.0;
+
+        for (int i = 0; i < fftSize; i++) {
+
+            if (dataSubChannelIdx.contains(i)) {
+                signalLocalEnergy += Math.pow(subChannels.get(i).getValue().getImaginary(),2) +  Math.pow(subChannels.get(i).getValue().getReal(),2);
+            } else {
+                noiseLocalEnergy += Math.pow(subChannels.get(i).getValue().getImaginary(),2) +  Math.pow(subChannels.get(i).getValue().getReal(),2);
+            }
+        }
+
+        signalLocalEnergy = signalLocalEnergy / dataSubChannelIdx.size();
+        noiseLocalEnergy = noiseLocalEnergy / (fftSize-dataSubChannelIdx.size());
+        return 20.0 * Math.log10(signalLocalEnergy/noiseLocalEnergy);
     }
 
 

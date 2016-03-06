@@ -51,13 +51,7 @@ public class Frame {
                     }
                 } else if (pilotSubChannelIdx.contains(j)) {
                     // pilot channel
-                    // @TODO: add better pilot symbols.
                     singleOFDMSymbolBuffer[j] = new Complex(1.0, 0.0);
-//                    if ((pilotCounter%2)==0) {
-//                        singleOFDMSymbolBuffer[j] = new Complex(0.0, 1.0);
-//                    } else {
-//                        singleOFDMSymbolBuffer[j] = new Complex(0.0, -1.0);
-//                    }
                     pilotCounter ++;
                     if (pilotCounter>pilotBlockSize) {
                         throw new IllegalArgumentException("Pilot size overflow.");
@@ -68,10 +62,9 @@ public class Frame {
                 }
             }
 
-            //
-            for (int k = 0; k < singleOFDMSymbolBuffer.length; k++) {
-               System.out.println("generated OFDM channel:"+k+" value:"+singleOFDMSymbolBuffer[k].toString());
-            }
+//            for (int k = 0; k < singleOFDMSymbolBuffer.length; k++) {
+//               System.out.println("generated OFDM channel:"+k+" value:"+singleOFDMSymbolBuffer[k].toString());
+//            }
             parallel.add(singleOFDMSymbolBuffer);
         }
 

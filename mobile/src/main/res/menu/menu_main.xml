@@ -4,13 +4,16 @@
     xmlns:tools="http://schemas.android.com/tools"
     tools:context=".MainActivity">
     <item
-        android:id="@+id/header_title"
+        android:id="@+id/menu_status"
+        android:title="Log"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/menu_about"
         android:title="About"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_settings"
+        android:id="@+id/menu_settings"
         android:title="Settings"
         app:showAsAction="always">
-
     </item>
 </menu>

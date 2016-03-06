@@ -5,7 +5,13 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.PreferenceFragment;
 import android.support.v7.app.AppCompatActivity;
+import android.util.EventLog;
 import android.util.Log;
+
+import net.yishanhe.wearcomm.events.ReceiveMessageEvent;
+import net.yishanhe.wearlock.events.MessageEvent;
+
+import org.greenrobot.eventbus.EventBus;
 
 /**
  * Created by syi on 2/9/16.
@@ -17,7 +23,6 @@ public class SettingActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
 
         // display the fragment as main content
         getFragmentManager().beginTransaction()
@@ -53,6 +58,7 @@ public class SettingActivity extends AppCompatActivity {
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             Log.d(TAG, "onSharedPreferenceChanged: "+key);
+            EventBus.getDefault().post(new MessageEvent(TAG, key, "/PREFERENCE_UPDATED"));
         }
     }
 }
