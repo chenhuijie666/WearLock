@@ -24,7 +24,7 @@ public class SilenceDetector {
      *            The audio buffer.
      * @return The local (linear) energy of an audio buffer.
      */
-    private double localEnergy(final double[] buffer) {
+    public static double localEnergy(final double[] buffer) {
         double power = 0.0D;
         for (double element : buffer) {
             power += element * element;
@@ -39,7 +39,7 @@ public class SilenceDetector {
      *            The buffer with audio information.
      * @return The dBSPL level for the buffer.
      */
-    private double soundPressureLevel(final double[] buffer) {
+    public static double soundPressureLevel(final double[] buffer) {
         double value = Math.pow(localEnergy(buffer), 0.5);
         value = value / buffer.length;
         return linearToDecibel(value);
@@ -52,7 +52,7 @@ public class SilenceDetector {
      *            The value to convert.
      * @return The converted value.
      */
-    private double linearToDecibel(final double value) {
+    public static double linearToDecibel(final double value) {
         return 20.0 * Math.log10(value);
     }
 
@@ -80,5 +80,9 @@ public class SilenceDetector {
     public double getCurrentSPL() {
         // have to call isSilence first. be cautious.
         return currentSPL;
+    }
+
+    public static double getSPLinBuffer(final double[] buffer) {
+        return soundPressureLevel(buffer);
     }
 }

@@ -37,13 +37,13 @@ dependencies {
     compile fileTree(include: ['*.jar'], dir: 'libs')
     wearApp project(':wear')
     compile project(':OFDM')
+//    compile 'com.android.support:design:23.2.0'
+    compile project(':wearcomm')
     compile 'com.android.support:design:23.2.0'
     compile 'com.jakewharton:butterknife:7.0.1'
     compile 'com.github.clans:fab:1.6.2'
-    compile project(':wearcomm')
     compile 'com.android.support:multidex:1.0.1'
     compile 'org.jboss.aerogear:aerogear-otp-java:1.0.0.M1'
-    compile('com.mikepenz:materialdrawer:5.0.9@aar') {
-        transitive = true
-    }
+    compile 'com.android.support:support-v4:23.2.0'
+    compile 'com.android.support:recyclerview-v7:23.2.0'
 }

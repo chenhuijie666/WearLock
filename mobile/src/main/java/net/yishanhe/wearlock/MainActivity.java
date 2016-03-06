@@ -4,16 +4,17 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentTransaction;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
@@ -21,21 +22,19 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.ImageView;
-import android.widget.Toast;
 
 import com.github.clans.fab.FloatingActionButton;
 import com.github.clans.fab.FloatingActionMenu;
 import com.google.android.gms.common.api.GoogleApiClient;
 
 import net.yishanhe.ofdm.Chunk;
-import net.yishanhe.ofdm.Synchronization;
 import net.yishanhe.utils.IOUtils;
 import net.yishanhe.wearcomm.WearCommClient;
 import net.yishanhe.wearcomm.events.ChannelOpenedEvent;
 import net.yishanhe.wearcomm.events.FileReceivedEvent;
 import net.yishanhe.wearcomm.events.ReceiveMessageEvent;
 import net.yishanhe.wearcomm.events.SendMessageEvent;
-import net.yishanhe.wearlock.events.StatusMessageEvent;
+import net.yishanhe.wearlock.events.MessageEvent;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -44,13 +43,13 @@ import org.greenrobot.eventbus.ThreadMode;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.prefs.PreferenceChangeEvent;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 
-public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks , AudioTrack.OnPlaybackPositionUpdateListener{
+public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks , AudioTrack.OnPlaybackPositionUpdateListener {
 
     private static final String TAG = "MainActivity";
 
@@ -96,7 +95,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Bind(R.id.fab_clean) FloatingActionButton fabClean;
     @OnClick(R.id.fab_clean)
     public void clean() {
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "", "/clean_status"));
+        EventBus.getDefault().post(new MessageEvent(TAG, "", "/clean_status"));
         inputPin = null;
         fabProbingBeep.setEnabled(true);
         fabModulatedBeep.setEnabled(false);
@@ -119,10 +118,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         state = LOCAL;
         if (modulatedTrack!=null) {
             handler.post(modulatedTrack);
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, "Local modulated sent."));
+            EventBus.getDefault().post(new MessageEvent(TAG, "Local modulated sent."));
         } else {
             handler.post(preambleTrack);
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, "Local preamble sent."));
+            EventBus.getDefault().post(new MessageEvent(TAG, "Local preamble sent."));
         }
         fab.toggle(true);
     }
@@ -158,9 +157,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
     @Subscribe
     public void onReceiveMessageEvent(ReceiveMessageEvent event){
+
         if (event.getPath().equalsIgnoreCase("/measure_message_delay")) {
             Log.d(TAG, "onReceiveMessageEvent: measure message delay.");
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, "Measured RTT:"+(System.currentTimeMillis()-messageSentTime)+"ms"));
+            EventBus.getDefault().post(new MessageEvent(TAG, "Measured RTT:"+(System.currentTimeMillis()-messageSentTime)+"ms"));
         }
         if (event.getPath().equalsIgnoreCase(RECORDING_STARTED)) {
             Log.d(TAG, "onReceiveMessageEvent: remote recording started.");
@@ -176,7 +176,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         if (event.getPath().equalsIgnoreCase("/PIN")) {
             setInputPin( new String(event.getData()));
             Log.d(TAG, "onReceiveMessageEvent: new pin code "+inputPin);
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, "pin "+inputPin));
+            EventBus.getDefault().post(new MessageEvent(TAG, "pin "+inputPin));
             // regenerate the ofdm modulated sound.
             modem.makeModulated(inputPin);
             if (modulatedTrack!=null) {
@@ -185,6 +185,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
             modulatedTrack = new AudioRunnable(modem.getSampleRateInHZ(), modem.getModulatedInShort(), this);
             fabModulatedBeep.setEnabled(true);
+        }
+
+        if (event.getPath().equalsIgnoreCase("PREFERENCE_UPDATED")) {
 
         }
     }
@@ -196,7 +199,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     private AudioRunnable preambleTrack = null;
     private AudioRunnable modulatedTrack = null;
 
-    // @TODO test message sending delay.
+    private Fragment activeFragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -209,8 +212,15 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         ButterKnife.bind(this);
 
         // iv.setImageDrawable(getResources().getDrawable(R.drawable.ic_action_header));
-        setSupportActionBar(toolbar);
+        if (toolbar!=null) {
+            setSupportActionBar(toolbar);
+        }
 
+
+        //
+        MainActivityFragment homeFragment = new MainActivityFragment();
+        getSupportFragmentManager().beginTransaction().add(R.id.fragment_container, homeFragment).commit();
+        activeFragment = homeFragment;
 
         // set fab
         fab.setClosedOnTouchOutside(true);
@@ -247,7 +257,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             preambleTrack = new AudioRunnable(modem.getSampleRateInHZ(), modem.getPreambleInShort(), this);
             // modulated symbol
 
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, "Init finished. FAB enabled."));
+            EventBus.getDefault().post(new MessageEvent(TAG, "Init finished. FAB enabled."));
         }
 
         if ( ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -323,7 +333,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     public boolean onOptionsItemSelected(MenuItem item) {
 
         switch (item.getItemId()) {
-            case R.id.action_settings:
+            case R.id.menu_settings:
                 startActivity(new Intent(this, SettingActivity.class));
                 break;
         }
@@ -382,9 +392,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     
     @Subscribe(threadMode = ThreadMode.BACKGROUND)
     public void onFileReceivedEvent(FileReceivedEvent event) {
-        Log.d(TAG, "onFileReceivedEvent: main");
-        // do analysis here.
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "File received. time cost:"+(System.currentTimeMillis()-fileSentTime)+"ms"));
+        Log.d(TAG, "onFileReceivedEvent: file received. time cost:"+(System.currentTimeMillis()-fileSentTime)+"ms");
+
 
         // run data analysis here.
 //        File file = new File(Environment.getExternalStorageDirectory().getPath(), "rec.raw");
@@ -393,7 +402,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         chunk = new Chunk(true, IOUtils.loadFromFile(rec)); // true big endian
         double[] input = chunk.getDoubleBuffer();
 
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "load "+input.length+" samples."));
+        EventBus.getDefault().post(new MessageEvent(TAG, "load "+input.length+" samples."));
 
         SlidingWindow sw = new SlidingWindow(4096,2048,input);
 
@@ -406,7 +415,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         int maxStartIdx = 0;
         int maxEndIdx = 0;
         double maxSPL = -100.0;
-
+        double minSPL = 100.0;
+        double SNR;
 
         while (sw.hasNext()) {
 
@@ -426,6 +436,12 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 }
             }
 
+            // get minSPL:
+            if (sd.getCurrentSPL() < minSPL) {
+                minSPL = sd.getCurrentSPL();
+            }
+
+            // get maxSPL
             if (sd.getCurrentSPL() > maxSPL ) {
                 maxSPL = sd.getCurrentSPL();
                 System.out.println("maxSPD updated. " + maxSPL);
@@ -434,6 +450,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
 
         }
+        SNR = maxSPL - minSPL;
+        Log.d(TAG, "onFileReceivedEvent: rough estimate of SNR:"+SNR);
+        EventBus.getDefault().post(new MessageEvent(TAG, "rough estimate of SNR:"+SNR,"/UPDATE_STATUS"));
 
         if (isClipStart == true) {
             isClipStart = false;
@@ -445,9 +464,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             throw new IllegalArgumentException("chunk start and end size mismatch.");
         }
 
-        // run preamble detection.
+        // fall back to max SPK chunk to run preamble detection.
         if (startIndexArray.size() == 0) {
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx));
+            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx,"/UPDATE_STATUS"));
             startIndexArray.add(maxStartIdx);
             endIndexArray.add(maxEndIdx);
 
@@ -467,10 +486,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         }
 
-        EventBus.getDefault().post(new StatusMessageEvent(TAG, "detect preamble:  "+ maxXcorrVal));
+        EventBus.getDefault().post(new MessageEvent(TAG, "test preamble:  "+ maxXcorrVal,"/UPDATE_STATUS"));
 
         if (maxXcorrVal < 0.1) {
-            EventBus.getDefault().post(new StatusMessageEvent(TAG, "detect preamble signal too bad abort tastk."));
+            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble signal too bad abort task.","/UPDATE_STATUS"));
             return;
         }
 
@@ -484,7 +503,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
                 String demodulated = modem.deModulate(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
                 // call demodulate
-                EventBus.getDefault().post(new StatusMessageEvent(TAG, demodulated,"/demodulated_result"));
+                EventBus.getDefault().post(new MessageEvent(TAG, demodulated,"/demodulated_result"));
                 break;
 
             default:
@@ -498,7 +517,19 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     }
 
 
+    public void displayFragment(Fragment fragment) {
+        //  && fragment.getClass() != this.activeFragment.getClass()
+        if (this.getSupportFragmentManager().getFragments()!=null ) {
+            FragmentTransaction transaction = this.getSupportFragmentManager().beginTransaction();
+            // warning: this may be wrong.
+            transaction.replace(R.id.fragment_container, fragment);
+            transaction.commit();
+        }
+    }
+
     public void setInputPin(String inputPin) {
         this.inputPin = inputPin;
     }
+
+
 }

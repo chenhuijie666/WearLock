@@ -53,8 +53,6 @@ public class Chunk {
        return IOUtils.doublesToBytes(doubleBuffer, bigEndian);
     }
 
-
-
     // dump methods
 
     public static void dump(String filePathName, byte[] byteBuffer) throws IOException {

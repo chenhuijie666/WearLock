@@ -2,6 +2,17 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     android:title="Settings" >
 
+
+    <PreferenceCategory
+        android:title="WearLock">
+        <CheckBoxPreference
+            android:key="experiment_mode"
+            android:defaultValue="false"
+            android:title="Experiment Mode"/>
+
+    </PreferenceCategory>
+
+
     <PreferenceCategory
         android:title="Acoustics">
 
@@ -19,9 +30,13 @@
     <PreferenceCategory
         android:title="OFDM">
 
+        <CheckBoxPreference
+            android:key="debug_output"
+            android:defaultValue="true"
+            android:title="Debug Output"/>
+
         <PreferenceScreen
-            android:title="Preamble"
-            android:summary="Preamble-related settings">
+            android:title="Preamble">
 
             <EditTextPreference
                 android:title="Preamble Size"
@@ -64,7 +79,7 @@
         </PreferenceScreen>
 
         <EditTextPreference
-            android:title="FFT Size"
+            android:title="FFT"
             android:key="fft_size"
             android:defaultValue="256" />
 
@@ -115,13 +130,7 @@
 
     </PreferenceCategory>
 
-    <PreferenceCategory
-        android:title="WearLock">
-        <CheckBoxPreference
-            android:key="survey_mode"
-            android:defaultValue="false"
-            android:title="Survey Mode"/>
-    </PreferenceCategory>
+
 
 
 </PreferenceScreen>

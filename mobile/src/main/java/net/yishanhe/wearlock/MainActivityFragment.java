@@ -6,18 +6,15 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import net.yishanhe.wearcomm.events.ReceiveMessageEvent;
-import net.yishanhe.wearlock.R;
-import net.yishanhe.wearlock.events.StatusMessageEvent;
+import net.yishanhe.wearlock.events.MessageEvent;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -27,7 +24,6 @@ import org.jboss.aerogear.security.otp.Totp;
 import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
-import butterknife.OnEditorAction;
 import butterknife.OnTextChanged;
 
 /**
@@ -101,12 +97,12 @@ public class MainActivityFragment extends Fragment {
         ButterKnife.bind(this, v);
 
         status.setMovementMethod(new ScrollingMovementMethod());
-        status.append("STATUS:\n");
+        status.setText("");
         return v;
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
-    public void onStatusMessageEvent(StatusMessageEvent event){
+    public void onMessageEvent(MessageEvent event){
         if (event.getPath().equalsIgnoreCase("/clean_status")) {
             status.setText("");
             pinEditText.setText("");
@@ -134,8 +130,7 @@ public class MainActivityFragment extends Fragment {
             cumulativeRight += right;
             cumulativeWrong += wrong;
             cumulativeBER = ((double)cumulativeWrong)/(cumulativeWrong+cumulativeRight);
-            status.append("BER:"+ber+"\n");
-            status.append("cumluative BER:"+cumulativeBER+"\n");
+            status.append("BER:"+String.format("%.4f",ber)+", cumulative BER:"+String.format("%.4f",cumulativeBER)+"\n");
 
         }
 
@@ -143,7 +138,10 @@ public class MainActivityFragment extends Fragment {
             pinBinaryText.setText(event.getMessage());
         }
 
-        status.append(event.getTag()+": "+event.getMessage()+"\n");
+        if (event.getPath().equalsIgnoreCase("/UPDATE_STATUS")) {
+            status.append(event.getTag()+": "+event.getMessage()+"\n");
+        }
+
     }
 
 
