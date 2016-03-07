@@ -58,7 +58,7 @@ public class SettingActivity extends AppCompatActivity {
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             Log.d(TAG, "onSharedPreferenceChanged: "+key);
-            EventBus.getDefault().post(new MessageEvent(TAG, key, "/PREFERENCE_UPDATED"));
+            EventBus.getDefault().post(new ReceiveMessageEvent("/Preference_updated", key.getBytes()));
         }
     }
 }

@@ -50,6 +50,7 @@ public class Modem {
     private boolean isAdaptiveModulationON;
     private boolean isChannelEstimationON;
     private boolean isChannelTestModeON;
+    private boolean isExperimentModeON;
     private boolean isDebugOutputON;
 
     private int guardSize;
@@ -71,6 +72,7 @@ public class Modem {
     private short[] preambleInShort;
     private short[] modulatedInShort;
     private double[] modulated;
+    private String target;
 
 //    private Thread writerThread;
 
@@ -100,6 +102,7 @@ public class Modem {
         this.isChannelEstimationON = prefs.getBoolean("channel_est",false);
         this.isChannelTestModeON = prefs.getBoolean("channel_test_mode",false);
         this.isDebugOutputON = prefs.getBoolean("debug_output",true);
+        this.isExperimentModeON  = prefs.getBoolean("experiment_mode", false);
         this.guardSize = Integer.parseInt(prefs.getString("guard_size","128"));
         String[] pilotIndex = prefs.getString("pilot_index","7,11,15,19,23,27,31,35").split(",");
         this.pilotSubChannelIdx = new ArrayList<>(pilotIndex.length);
@@ -129,17 +132,15 @@ public class Modem {
         this.constellation = new Constellation(modulationType);
         this.channel = new Channel(fftSize, sampleRateInHZ, pilotSubChannelIdx, dataSubChannelIdx);
         this.frame = new Frame(fftSize, pilotSubChannelIdx, dataSubChannelIdx);
-        EventBus.getDefault().post(new MessageEvent(TAG, "Prepared."));
     }
 
     public void makePreamble() {
         this.preamble = new Preamble(preambleSize, postPreambleGuardSize, preambleStartFreq, preambleFreqRange, sampleRateInHZ);
         this.adaptiveModulation = new AdaptiveModulation(preamble);
         preambleInShort = doubleToAudioShort(scaleDoubles(preamble.getPreamble()));
-        EventBus.getDefault().post(new MessageEvent(TAG, "Preamble is made."));
     }
 
-    public synchronized void makeModulated(String inputPin) {
+    public  void makeModulated(String inputPin) {
 
         if (isChannelTestModeON) {
             if (modulationType == ModulationType.QPSK || modulationType == ModulationType.QASK) {
@@ -155,7 +156,7 @@ public class Modem {
         }
         // @TODO: use the api in chunk class.
 
-        String target = inputPin;
+        target = inputPin;
 
         Log.d(TAG, "makeModulated: target "+target);
         Log.d(TAG, "makeModulated: modulation type "+this.modulationType);
@@ -267,7 +268,10 @@ public class Modem {
 
             channel.setChannelBuffer(fftBuffer);
             channel.estimate();
-            EventBus.getDefault().post(new MessageEvent(TAG, "SNR channel estimated: "+channel.getSNRinDB(),"/UPDATE_STATUS"));
+            EventBus.getDefault().post(new MessageEvent(TAG, "SNR estimated: "+String.format("%.4f",channel.getSNRinDB()),"/UPDATE_STATUS"));
+
+            EventBus.getDefault().post(new MessageEvent(TAG, "Eb/N0 estimated: "+String.format("%.4f",channel.getSNRinDB()-10*Math.log10(dataSubChannelIdx.size()/(double)fftSize)),"/UPDATE_STATUS"));
+
             Complex[] equalized = channel.getEqualized();
 
             if (isDebugOutputON) {
@@ -335,4 +339,7 @@ public class Modem {
         return preamble.getPreamble();
     }
 
+    public boolean isExperimentModeON() {
+        return isExperimentModeON;
+    }
 }

@@ -95,7 +95,7 @@ public class Preamble {
             }
         }
 
-        System.out.println(maxVal);
+//        System.out.println(maxVal);
         return maxVal;
 
     }

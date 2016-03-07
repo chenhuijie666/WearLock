@@ -8,8 +8,8 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
-import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
@@ -42,8 +42,9 @@ import org.greenrobot.eventbus.ThreadMode;
 
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.prefs.PreferenceChangeEvent;
+import java.util.Date;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
@@ -60,9 +61,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     private static final String STOP_RECORDING = "/stop_recording";
     private static final String SEND_RECORDING = "/send_recording";
     private File rec;
-    public static String SAVE_DIR = "WearLock";
+    private File audioFolder;
+    private File logFile;
     private File folder;
-    private String inputPin = null;
+    private String inputPin = "";
     private static final int REQUEST_WRITE_STORAGE = 112;
 
     final Handler handler = new Handler();
@@ -79,36 +81,29 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     // fab menu and buttons.
     @Bind(R.id.fab) FloatingActionMenu fab;
 
-//    @Bind(R.id.fab_ambient_noise) FloatingActionButton fabAmbientNoise;
-//    @OnClick(R.id.fab_ambient_noise)
-//    public void getAmbientNoise() {
-//        EventBus.getDefault().post(new SendMessageEvent(START_RECORDING));
-//        handler.postDelayed(new Runnable() {
-//            @Override
-//            public void run() {
-//                EventBus.getDefault().post(new SendMessageEvent(STOP_RECORDING));
-//            }
-//        }, 5000);
-//        fab.toggle(true);
-//    }
-
     @Bind(R.id.fab_clean) FloatingActionButton fabClean;
     @OnClick(R.id.fab_clean)
     public void clean() {
         EventBus.getDefault().post(new MessageEvent(TAG, "", "/clean_status"));
         inputPin = null;
-        fabProbingBeep.setEnabled(true);
-        fabModulatedBeep.setEnabled(false);
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (folder.isDirectory()) {
-                    for (File child : folder.listFiles()) {
+                if (audioFolder.isDirectory()) {
+                    for (File child : audioFolder.listFiles()) {
                         child.delete();
+                    }
+                }
+                if (folder.isDirectory()) {
+                    for (File child: folder.listFiles()) {
+                        if (!child.isDirectory()) {
+                            child.delete();
+                        }
                     }
                 }
             }
         }, 100);
+        fab.toggle(true);
     }
 
     // @TODO: add preference to play with remote recording or just local.
@@ -118,10 +113,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         state = LOCAL;
         if (modulatedTrack!=null) {
             handler.post(modulatedTrack);
-            EventBus.getDefault().post(new MessageEvent(TAG, "Local modulated sent."));
         } else {
             handler.post(preambleTrack);
-            EventBus.getDefault().post(new MessageEvent(TAG, "Local preamble sent."));
         }
         fab.toggle(true);
     }
@@ -129,7 +122,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Bind(R.id.fab_probing_beep) FloatingActionButton fabProbingBeep;
     @OnClick(R.id.fab_probing_beep)
     public void sendProbingBeep() {
-        fabProbingBeep.setEnabled(false);
         state = REMOTE_PREAMBLE;
         EventBus.getDefault().post(new SendMessageEvent(START_RECORDING));
         fab.toggle(true);
@@ -139,11 +131,11 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Bind(R.id.fab_modulated_beep) FloatingActionButton fabModulatedBeep;
     @OnClick(R.id.fab_modulated_beep)
     public void sendModulatedBeep() {
-        fabModulatedBeep.setEnabled(false);
         state = REMOTE_MODULATED;
         EventBus.getDefault().post(new SendMessageEvent(START_RECORDING));
         fab.toggle(true);
     }
+
     @Bind(R.id.fab_reset) FloatingActionButton fabReset;
 
     @Bind(R.id.fab_timer) FloatingActionButton fabTimer;
@@ -159,30 +151,35 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     public void onReceiveMessageEvent(ReceiveMessageEvent event){
 
         if (event.getPath().equalsIgnoreCase("/measure_message_delay")) {
-            Log.d(TAG, "onReceiveMessageEvent: measure message delay.");
+            Log.d(TAG, "onReceiveMessageEvent: message RTT:"+(System.currentTimeMillis()-messageSentTime)+"ms");
             EventBus.getDefault().post(new MessageEvent(TAG, "Measured RTT:"+(System.currentTimeMillis()-messageSentTime)+"ms"));
         }
         if (event.getPath().equalsIgnoreCase(RECORDING_STARTED)) {
             Log.d(TAG, "onReceiveMessageEvent: remote recording started.");
             switch (state) {
                 case REMOTE_PREAMBLE:
-                    handler.postDelayed(preambleTrack, 100);
+                    handler.postDelayed(preambleTrack, 200);
                     break;
                 case REMOTE_MODULATED:
-                    handler.postDelayed(modulatedTrack, 100);
+                    handler.postDelayed(modulatedTrack, 200);
                     break;
             }
         }
         if (event.getPath().equalsIgnoreCase("/PIN")) {
+            String newPin = new String(event.getData());
+            if (!newPin.equals(inputPin)) {
+
+            }
             setInputPin( new String(event.getData()));
             Log.d(TAG, "onReceiveMessageEvent: new pin code "+inputPin);
             EventBus.getDefault().post(new MessageEvent(TAG, "pin "+inputPin));
+
             // regenerate the ofdm modulated sound.
             modem.makeModulated(inputPin);
-            if (modulatedTrack!=null) {
-                modulatedTrack.release();
-                modulatedTrack = null;
-            }
+//            if (modulatedTrack!=null) {
+//                modulatedTrack.release();
+//                modulatedTrack = null;
+//            }
             modulatedTrack = new AudioRunnable(modem.getSampleRateInHZ(), modem.getModulatedInShort(), this);
             fabModulatedBeep.setEnabled(true);
         }
@@ -221,17 +218,19 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         MainActivityFragment homeFragment = new MainActivityFragment();
         getSupportFragmentManager().beginTransaction().add(R.id.fragment_container, homeFragment).commit();
         activeFragment = homeFragment;
+//        displayFragment(homeFragment);
 
         // set fab
         fab.setClosedOnTouchOutside(true);
         fabModulatedBeep.setEnabled(false);
 
+        // capability check
+        AudioManager am = (AudioManager) this.getSystemService(Context.AUDIO_SERVICE);
+        Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER));
+        Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE));
+        Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_MIC_NEAR_ULTRASOUND));
+        Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_SPEAKER_NEAR_ULTRASOUND));
 
-        // IO
-        folder = new File("/sdcard/"+File.separator+SAVE_DIR+File.separator);
-        if(! this.folder.exists()) {
-            folder.mkdir();
-        }
 
         // init google api client
         client = WearCommClient.getInstance(this, this);
@@ -241,23 +240,18 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         // prepare Modem
         modem = Modem.getInstance(this);
+
+
         if (modem != null) {
             modem.LoadParameter();
             modem.prepare();
 
             modem.makePreamble();
 
-            AudioManager am = (AudioManager) this.getSystemService(Context.AUDIO_SERVICE);
-            Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER));
-            Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE));
-            Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_MIC_NEAR_ULTRASOUND));
-            Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_SPEAKER_NEAR_ULTRASOUND));
-
             // load preamble/modulated to tracks
             preambleTrack = new AudioRunnable(modem.getSampleRateInHZ(), modem.getPreambleInShort(), this);
             // modulated symbol
 
-            EventBus.getDefault().post(new MessageEvent(TAG, "Init finished. FAB enabled."));
         }
 
         if ( ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -265,6 +259,15 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
                     REQUEST_WRITE_STORAGE);
         }
+
+        // IO
+        audioFolder = new File(Environment.getExternalStorageDirectory().getPath()+"/WearLock/audio/");
+        if(! this.audioFolder.exists()) {
+            if (!audioFolder.mkdirs()) {
+                Log.e(TAG, "onCreate: create folders failed.");
+            }
+        }
+        folder = new File(Environment.getExternalStorageDirectory().getPath()+"/WearLock/");
 
     }
 
@@ -274,7 +277,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         switch (requestCode) {
             case REQUEST_WRITE_STORAGE:
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-//                    this.recreate();
                     Log.d(TAG, "Write to external storage permission granted.");
                 } else {
                     Log.d(TAG, "Write to external storage permission denied.");
@@ -297,12 +299,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                         EventBus.getDefault().post(new SendMessageEvent(STOP_RECORDING));
                     }
                 }, 250);
-                fabProbingBeep.setEnabled(true);
-                if (inputPin!=null) {
-                    fabModulatedBeep.setEnabled(true);
-                } else {
-                    fabModulatedBeep.setEnabled(false);
-                }
                 break;
         }
     }
@@ -344,42 +340,58 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
     @Override
     protected void onDestroy() {
-//        audioWriter.unregisterListener();
         if (preambleTrack!=null) {
             preambleTrack.release();
+            preambleTrack = null;
         }
 
         if (modulatedTrack!=null) {
             modulatedTrack.release();
+            modulatedTrack = null;
         }
         EventBus.getDefault().unregister(this);
         Log.d(TAG, "onDestroy: stop activity");
         EventBus.getDefault().post(new SendMessageEvent(STOP_ACTIVITY));
-//        client.disconnect();
+
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                // close the client after it processes the STOP_ACTIVITY message.
-                // TODO: use a pair of messages to do this.
                 client.disconnect();
             }
         }, 500); // wait for the stop_activity message being sent out.
+
         super.onDestroy();
     }
 
-    @Subscribe
+    @Subscribe(threadMode = ThreadMode.BACKGROUND)
     public void onChannelOpenedEvent(ChannelOpenedEvent event) {
         if (event.getChannel().getPath().equalsIgnoreCase(SEND_RECORDING)) {
 
+            // use this file to create file name
+
             fileSentTime = System.currentTimeMillis();
+            Date filedate = new Date(fileSentTime);
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
+            String filename = sdf.format(filedate);
             try {
                 if (state == REMOTE_MODULATED) {
-                    rec = File.createTempFile("modulated",".raw", folder);
+                    filename = sdf.format(filedate)+"-modulated"+".raw";
+//                    rec = File.createTempFile("modulated",".raw", audioFolder);
                 } else if (state == REMOTE_PREAMBLE) {
-                    rec = File.createTempFile("preamble",".raw", folder);
+                    filename = sdf.format(filedate)+"-preamble"+".raw";
+//                    rec = File.createTempFile("preamble",".raw", audioFolder);
                 } else {
-                    rec = File.createTempFile("wearlock",".raw", folder);
+                    filename = sdf.format(filedate)+"-recording"+".raw";
+//                    rec = File.createTempFile("recording",".raw", audioFolder);
                 }
+
+                // create file
+                rec = new File(audioFolder,filename);
+                if (!rec.exists()) {
+                    rec.createNewFile();
+                }
+
+                // receive file
                 event.getChannel().receiveFile(client.getGoogleApiClient(), Uri.fromFile(rec), false);
 
                 Log.d(TAG, "onChannelOpened: Saving data to file:"+rec.getName());
@@ -406,7 +418,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         SlidingWindow sw = new SlidingWindow(4096,2048,input);
 
-        SilenceDetector sd = new SilenceDetector(-75.0);
+        SilenceDetector sd = new SilenceDetector(20.0);
 
         boolean isClipStart = false;
         ArrayList<Integer> startIndexArray = new ArrayList<>();
@@ -414,9 +426,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         int maxStartIdx = 0;
         int maxEndIdx = 0;
-        double maxSPL = -100.0;
-        double minSPL = 100.0;
-        double SNR;
+        double maxSPL = -1000.0;
+        double minSPL = 1000.0;
+        double CNR;
 
         while (sw.hasNext()) {
 
@@ -450,9 +462,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
 
         }
-        SNR = maxSPL - minSPL;
-        Log.d(TAG, "onFileReceivedEvent: rough estimate of SNR:"+SNR);
-        EventBus.getDefault().post(new MessageEvent(TAG, "rough estimate of SNR:"+SNR,"/UPDATE_STATUS"));
+        CNR = maxSPL - minSPL;
+        Log.d(TAG, "onFileReceivedEvent: rough estimate of CNR:"+CNR);
+        EventBus.getDefault().post(new MessageEvent(TAG, "rough estimate of CNR:"+String.format("%.4f",CNR),"/UPDATE_STATUS"));
 
         if (isClipStart == true) {
             isClipStart = false;
@@ -486,7 +498,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         }
 
-        EventBus.getDefault().post(new MessageEvent(TAG, "test preamble:  "+ maxXcorrVal,"/UPDATE_STATUS"));
+        EventBus.getDefault().post(new MessageEvent(TAG, "test preamble:  "+ String.format("%.4f",maxXcorrVal),"/UPDATE_STATUS"));
 
         if (maxXcorrVal < 0.1) {
             EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble signal too bad abort task.","/UPDATE_STATUS"));
@@ -517,15 +529,15 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     }
 
 
-    public void displayFragment(Fragment fragment) {
-        //  && fragment.getClass() != this.activeFragment.getClass()
-        if (this.getSupportFragmentManager().getFragments()!=null ) {
-            FragmentTransaction transaction = this.getSupportFragmentManager().beginTransaction();
-            // warning: this may be wrong.
-            transaction.replace(R.id.fragment_container, fragment);
-            transaction.commit();
-        }
-    }
+//    public void displayFragment(Fragment fragment) {
+//        //  && fragment.getClass() != this.activeFragment.getClass()
+//        if (this.getSupportFragmentManager().getFragments()!=null ) {
+//            FragmentTransaction transaction = this.getSupportFragmentManager().beginTransaction();
+//            // warning: this may be wrong.
+//            transaction.replace(R.id.fragment_container, fragment);
+//            transaction.commit();
+//        }
+//    }
 
     public void setInputPin(String inputPin) {
         this.inputPin = inputPin;

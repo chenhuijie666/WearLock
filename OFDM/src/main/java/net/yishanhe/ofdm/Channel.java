@@ -229,6 +229,8 @@ public class Channel {
         double signalLocalEnergy = 0.0;
         double noiseLocalEnergy = 0.0;
 
+        // Parseval's theorem
+        // https://en.wikipedia.org/wiki/Root_mean_square
         for (int i = 0; i < fftSize; i++) {
 
             if (dataSubChannelIdx.contains(i)) {
@@ -238,9 +240,9 @@ public class Channel {
             }
         }
 
-        signalLocalEnergy = signalLocalEnergy / dataSubChannelIdx.size();
-        noiseLocalEnergy = noiseLocalEnergy / (fftSize-dataSubChannelIdx.size());
-        return 20.0 * Math.log10(signalLocalEnergy/noiseLocalEnergy);
+        signalLocalEnergy = signalLocalEnergy / dataSubChannelIdx.size() /dataSubChannelIdx.size();
+        noiseLocalEnergy = noiseLocalEnergy / (fftSize-dataSubChannelIdx.size()) / (fftSize-dataSubChannelIdx.size());
+        return 10*Math.log10(signalLocalEnergy/noiseLocalEnergy);
     }
 
 

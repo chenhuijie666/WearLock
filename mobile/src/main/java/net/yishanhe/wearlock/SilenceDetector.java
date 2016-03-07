@@ -1,5 +1,7 @@
 package net.yishanhe.wearlock;
 
+import net.yishanhe.utils.DSPUtils;
+
 /**
  * Created by syi on 12/9/15.
  */
@@ -18,46 +20,6 @@ public class SilenceDetector {
     }
 
     /**
-     * Calculates the local (linear) energy of an audio buffer.
-     *
-     * @param buffer
-     *            The audio buffer.
-     * @return The local (linear) energy of an audio buffer.
-     */
-    public static double localEnergy(final double[] buffer) {
-        double power = 0.0D;
-        for (double element : buffer) {
-            power += element * element;
-        }
-        return power;
-    }
-
-    /**
-     * Returns the dBSPL for a buffer.
-     *
-     * @param buffer
-     *            The buffer with audio information.
-     * @return The dBSPL level for the buffer.
-     */
-    public static double soundPressureLevel(final double[] buffer) {
-        double value = Math.pow(localEnergy(buffer), 0.5);
-        value = value / buffer.length;
-        return linearToDecibel(value);
-    }
-
-    /**
-     * Converts a linear to a dB value.
-     *
-     * @param value
-     *            The value to convert.
-     * @return The converted value.
-     */
-    public static double linearToDecibel(final double value) {
-        return 20.0 * Math.log10(value);
-    }
-
-
-    /**
      * Checks if the dBSPL level in the buffer falls below a certain threshold.
      *
      * @param buffer
@@ -68,7 +30,7 @@ public class SilenceDetector {
      *         false otherwise.
      */
     public boolean isSilence(final double[] buffer, final double silenceThreshold) {
-        currentSPL = soundPressureLevel(buffer);
+        currentSPL = DSPUtils.soundPressureLevel(buffer);
         System.out.println("current SPL:"+currentSPL);
         return currentSPL < silenceThreshold;
     }
@@ -82,7 +44,8 @@ public class SilenceDetector {
         return currentSPL;
     }
 
-    public static double getSPLinBuffer(final double[] buffer) {
-        return soundPressureLevel(buffer);
+    public double getCurrentSPL(final double[] buffer) {
+        currentSPL = DSPUtils.soundPressureLevel(buffer);
+        return currentSPL;
     }
 }

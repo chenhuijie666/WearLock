@@ -348,6 +348,32 @@ public class DSPUtils {
         return (int)Math.pow(2, NextPow2Exp(n));
     }
 
+    /**
+     * Calculates the local (linear) energy of an audio buffer.
+     *
+     * @param buffer
+     *            The audio buffer.
+     * @return The local (linear) energy of an audio buffer.
+     */
+    public static double localEnergy(final double[] buffer) {
+        double power = 0.0D;
+        for (double element : buffer) {
+            power += element * element;
+        }
+        return power;
+    }
+
+    /**
+     * Returns the dBSPL for a buffer.
+     *
+     * @param buffer
+     *            The buffer with audio information.
+     * @return The dBSPL level for the buffer.
+     */
+    public static double soundPressureLevel(final double[] buffer) {
+        // reference pressure pref = 0.00002;
+        return 10.0 * Math.log10(localEnergy(buffer)/buffer.length) + 94;
+    }
 
 
 

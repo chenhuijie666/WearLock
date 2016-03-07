@@ -18,27 +18,29 @@ public class AudioRunnable implements Runnable {
 
     public AudioRunnable(int sampleRateInHz, short[] samples, AudioTrack.OnPlaybackPositionUpdateListener listener) {
 
-//        int minBufferSize = AudioTrack.getMinBufferSize(sampleRateInHz, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
-        int paddingLen = 2048;
-        toSend = new short[samples.length+paddingLen];
-        Arrays.fill(toSend, (short)0);
-        System.arraycopy(samples, 0, toSend, paddingLen/2, samples.length);
-//        toSend = new short[minBufferSize+samples.length];
+        int minBufferSize = AudioTrack.getMinBufferSize(sampleRateInHz, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+//        int paddingLen = 2048;
+//        toSend = new short[samples.length+paddingLen];
 //        Arrays.fill(toSend, (short)0);
-//        System.arraycopy(samples,0,toSend,minBufferSize/2,samples.length);
-//        Log.d(TAG, "AudioRunnable: minBufferSize "+minBufferSize+" audio length: "+(toSend.length*1000/44100)+"ms");
+//        System.arraycopy(samples, 0, toSend, paddingLen/2, samples.length);
+        toSend = new short[minBufferSize*4+samples.length];
+        Arrays.fill(toSend, (short)0);
+        System.arraycopy(samples,0,toSend,minBufferSize*2,samples.length);
+        Log.d(TAG, "AudioRunnable: minBufferSize "+minBufferSize+" audio length: "+(toSend.length*1000/44100)+"ms");
         this.track = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRateInHz, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, toSend.length*2, AudioTrack.MODE_STATIC);
         track.write(toSend, 0, toSend.length);
         track.setPlaybackPositionUpdateListener(listener);
     }
 
+
     @Override
     public void run() {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
-        playSound();
+        playStaticSound();
     }
 
-    private synchronized void playSound() {
+
+    private synchronized void playStaticSound() {
 //        track.reloadStaticData();
         switch (track.getPlayState()) {
             case AudioTrack.PLAYSTATE_PAUSED:
@@ -48,6 +50,7 @@ public class AudioRunnable implements Runnable {
                 track.play();
                 break;
             case AudioTrack.PLAYSTATE_PLAYING:
+                track.pause();
                 track.stop();
                 track.reloadStaticData();
                 track.setNotificationMarkerPosition(toSend.length/2);
