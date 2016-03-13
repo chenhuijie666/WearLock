@@ -58,9 +58,10 @@ public class FakeWearCommClient {
 
     public void connect() {
         // connect
-        Log.d(TAG, "connect ...");
+
         if (identifier == CLIENT) {
             if (client != null) {
+                Log.d(TAG, "connect ...");
                 client.connect();
             }
         }
@@ -70,9 +71,10 @@ public class FakeWearCommClient {
 
     public void disconnect() {
         // disconnect
-        Log.d(TAG, "disconnect");
+
         if (identifier == CLIENT) {
             if (client != null) {
+                Log.d(TAG, "disconnect");
                 client.disconnect();
             }
         }

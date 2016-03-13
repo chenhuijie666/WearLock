@@ -48,12 +48,14 @@ public class PhoneClient {
             // connected
             thread = new Thread(new ClientThread());
             thread.start();
+            connected = true;
         }
     }
 
     public void disconnect() {
         if (connected) {
             try {
+                Log.d(TAG, "disconnect: sent out /QUIT");
                 outputStream.write("/QUIT\r\n".getBytes());
                 connected = false;
                 bufferedReader.close();
@@ -97,16 +99,16 @@ public class PhoneClient {
                     if (line.contains("/FILE")) {
                         status = RECEIVING_MESSAGE;
                         Log.d(TAG, "run: receive file");
-                        long fileSize = Integer.valueOf(line.substring(5));
+                        long fileSize = Integer.valueOf(line.substring(line.indexOf("/FILE")+5));
 //                        bufferedReader.close();
 //                        BufferedInputStream bis = new BufferedInputStream(socket.getInputStream());
                         File file = new File("/sdcard/WearLock/tmp.raw");
-                        byte[] buffer = new byte[16*1024];
+                        byte[] buffer = new byte[socket.getReceiveBufferSize()];
                         FileOutputStream fos = new FileOutputStream(file);
                         int read;
                         int bytesRead = 0;
 
-                        while (bytesRead<fileSize &&(read = inputStream.read(buffer)) != -1) {
+                        while (bytesRead<fileSize &&(read = inputStream.read(buffer, 0, Math.min(buffer.length,((int)fileSize-bytesRead)))) != -1) {
                             fos.write(buffer, 0, read);
                             bytesRead += read;
                             Log.d(TAG, "sendFile: read "+read+", sent/full "+bytesRead+"/"+fileSize);
