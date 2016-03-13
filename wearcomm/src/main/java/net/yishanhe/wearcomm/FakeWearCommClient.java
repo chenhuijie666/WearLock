@@ -102,9 +102,9 @@ public class FakeWearCommClient {
 
     @Subscribe
     public void sendFile(SendFileEvent event) {
-        Log.d(TAG, "sendFile: received sending file request.");
         if (identifier == SERVER) {
             if (server != null) {
+                Log.d(TAG, "sendFile: received sending file request.");
                 server.sendFile(event);
             } else {
                 Log.d(TAG, "sendMessage: not send due to null server");

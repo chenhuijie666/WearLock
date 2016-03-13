@@ -188,10 +188,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             Log.d(TAG, "onReceiveMessageEvent: remote recording started.");
             switch (state) {
                 case REMOTE_PREAMBLE:
-                    handler.post(preambleTrack);
+                    handler.postDelayed(preambleTrack,200);
                     break;
                 case REMOTE_MODULATED:
-                    handler.post(modulatedTrack);
+                    handler.postDelayed(modulatedTrack,200);
                     break;
             }
         }
@@ -413,6 +413,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             modulatedTrack.release();
             modulatedTrack = null;
         }
+        mp.release();
         EventBus.getDefault().unregister(this);
         Log.d(TAG, "onDestroy: stop activity");
         EventBus.getDefault().post(new SendMessageEvent(STOP_ACTIVITY));

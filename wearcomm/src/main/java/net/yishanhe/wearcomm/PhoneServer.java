@@ -140,13 +140,20 @@ public class PhoneServer {
             for (int i = 0; i < threadPool.size(); i++) {
                 try {
                     byte[] buffer = new byte[16*1024];
-                    BufferedInputStream in = new BufferedInputStream(new FileInputStream(new File(event.getUri().getPath())));
+                    File toSend = new File(event.getUri().getPath());
+                    BufferedInputStream in = new BufferedInputStream(new FileInputStream(toSend));
+                    long fileSize = toSend.length();
                     int read;
-                    threadPool.get(i).output.write("/FILE\r\n".getBytes());
+                    int bytesRead = 0;
+                    threadPool.get(i).output.write(("/FILE"+fileSize+"\r\n").getBytes());
 
-                    while ( (read = in.read(buffer))!=-1) {
-                        threadPool.get(i).output.write(buffer);
+                    while ( bytesRead<fileSize && (read = in.read(buffer))!=-1) {
+                        threadPool.get(i).output.write(buffer, 0, read);
+                        bytesRead += read;
+                        Log.d(TAG, "sendFile: read "+read+", sent/full"+bytesRead+"/"+fileSize);
                     }
+                    in.close();
+                    Log.d(TAG, "sendFile: file sent.");
 
                 } catch (Exception e) {
                     e.printStackTrace();
