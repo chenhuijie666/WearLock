@@ -108,6 +108,7 @@ public class AudioReader {
         Log.i(TAG, "stopReader: thread stopped.");
 
     }
+
     public void readerRun(File file) {
         int readSize;
 
@@ -120,7 +121,7 @@ public class AudioReader {
         } catch (InterruptedException e) {}
 
         if (audioInput.getState() != AudioRecord.STATE_INITIALIZED ) {
-            Log.e(TAG, "readerRun: audio redear failed to init.");
+            Log.e(TAG, "readerRun: audio reader failed to init.");
             running = false;
             return;
         }

@@ -15,6 +15,7 @@ package net.yishanhe.wearlock.events;
  **/
 public class LogFileEvent {
     long timestamp;
+    String device; //  e.g. nexus_6->galaxy_nexus
     int distanceInCentimeter;
     String location;
     String modulation;

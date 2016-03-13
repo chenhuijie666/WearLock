@@ -23,9 +23,9 @@ public class AudioRunnable implements Runnable {
 //        toSend = new short[samples.length+paddingLen];
 //        Arrays.fill(toSend, (short)0);
 //        System.arraycopy(samples, 0, toSend, paddingLen/2, samples.length);
-        toSend = new short[minBufferSize*4+samples.length];
+        toSend = new short[minBufferSize+samples.length];
         Arrays.fill(toSend, (short)0);
-        System.arraycopy(samples,0,toSend,minBufferSize*2,samples.length);
+        System.arraycopy(samples,0,toSend,minBufferSize/2,samples.length);
         Log.d(TAG, "AudioRunnable: minBufferSize "+minBufferSize+" audio length: "+(toSend.length*1000/44100)+"ms");
         this.track = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRateInHz, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, toSend.length*2, AudioTrack.MODE_STATIC);
         track.write(toSend, 0, toSend.length);
@@ -41,7 +41,6 @@ public class AudioRunnable implements Runnable {
 
 
     private synchronized void playStaticSound() {
-//        track.reloadStaticData();
         switch (track.getPlayState()) {
             case AudioTrack.PLAYSTATE_PAUSED:
                 track.stop();

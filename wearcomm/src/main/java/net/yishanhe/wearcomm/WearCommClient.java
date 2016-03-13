@@ -48,8 +48,6 @@ GoogleApiClient.ConnectionCallbacks, MessageApi.MessageListener, DataApi.DataLis
 
     private Context context;
 
-    private HashSet <String> nodes = null;
-
     public static synchronized WearCommClient getInstance(Context context) {
         if (instance == null) {
             instance = new WearCommClient(context);
@@ -120,13 +118,6 @@ GoogleApiClient.ConnectionCallbacks, MessageApi.MessageListener, DataApi.DataLis
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
         Log.d(TAG, "onConnectionFailed: error code "+connectionResult.getErrorCode());
         Toast.makeText(context, "Cannot start the google api client.", Toast.LENGTH_SHORT).show();
-    }
-
-    // NodeApi
-    // get nodeid
-    private void getNodes() {
-        nodes = new HashSet<>();
-
     }
 
 

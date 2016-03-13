@@ -9,6 +9,7 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/OFDM" />
+            <option value="$PROJECT_DIR$/fakewear" />
             <option value="$PROJECT_DIR$/mobile" />
             <option value="$PROJECT_DIR$/wear" />
             <option value="$PROJECT_DIR$/wearcomm" />
@@ -18,6 +19,7 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/OFDM" />
+            <option value="$PROJECT_DIR$/fakewear" />
             <option value="$PROJECT_DIR$/mobile" />
             <option value="$PROJECT_DIR$/wear" />
             <option value="$PROJECT_DIR$/wearcomm" />

@@ -1,1 +1,1 @@
-include ':mobile', ':wear', ':OFDM', ':wearcomm'
+include ':mobile', ':wear', ':OFDM', ':wearcomm', ':fakewear'

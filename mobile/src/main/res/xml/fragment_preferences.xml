@@ -12,6 +12,21 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory
+        android:title="FakeWear">
+
+        <CheckBoxPreference
+            android:key="fake_wear_mode"
+            android:defaultValue="false"
+            android:summary="Use an Android phone as Android Wear device."
+            android:title="Fake Wear Mode"/>
+
+        <EditTextPreference
+            android:title="Server IP"
+            android:key="server_ip"
+            android:defaultValue="192.168.1.10" />
+
+    </PreferenceCategory>
 
     <PreferenceCategory
         android:title="Acoustics">

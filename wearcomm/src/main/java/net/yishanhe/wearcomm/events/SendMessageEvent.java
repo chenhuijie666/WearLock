@@ -15,7 +15,7 @@ public class SendMessageEvent {
 
     public SendMessageEvent(String path) {
         this.path = path;
-        this.data = null;
+        this.data = "null".getBytes();
     }
 
     public String getPath() {

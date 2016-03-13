@@ -3,13 +3,16 @@ package net.yishanhe.wearlock;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.AudioTrack;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
@@ -29,6 +32,7 @@ import com.google.android.gms.common.api.GoogleApiClient;
 
 import net.yishanhe.ofdm.Chunk;
 import net.yishanhe.utils.IOUtils;
+import net.yishanhe.wearcomm.FakeWearCommClient;
 import net.yishanhe.wearcomm.WearCommClient;
 import net.yishanhe.wearcomm.events.ChannelOpenedEvent;
 import net.yishanhe.wearcomm.events.FileReceivedEvent;
@@ -62,7 +66,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     private static final String SEND_RECORDING = "/send_recording";
     private File rec;
     private File audioFolder;
-    private File logFile;
+    private File logFile; // @TODO: put result in log file
     private File folder;
     private String inputPin = "";
     private static final int REQUEST_WRITE_STORAGE = 112;
@@ -76,6 +80,21 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
     private long messageSentTime;
     private long fileSentTime;
+
+    // client-server communication
+    private SharedPreferences prefs;
+    private boolean useFakeWear = false;
+    private String serverIP;
+
+    private MediaPlayer mp;
+
+
+
+
+
+
+    // BINDING Bufferknife
+
     @Bind(R.id.toolbar) Toolbar toolbar;
 
     // fab menu and buttons.
@@ -136,7 +155,18 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         fab.toggle(true);
     }
 
-    @Bind(R.id.fab_reset) FloatingActionButton fabReset;
+    @Bind(R.id.fab_fst) FloatingActionButton fabFST;
+    @OnClick(R.id.fab_fst)
+    public void playFreqSweepTest() {
+
+        if (mp.isPlaying()) {
+            mp.stop();
+            mp.start();
+        } else {
+            mp.start();
+        }
+        fab.toggle(true);
+    }
 
     @Bind(R.id.fab_timer) FloatingActionButton fabTimer;
     @OnClick(R.id.fab_timer)
@@ -158,10 +188,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             Log.d(TAG, "onReceiveMessageEvent: remote recording started.");
             switch (state) {
                 case REMOTE_PREAMBLE:
-                    handler.postDelayed(preambleTrack, 200);
+                    handler.post(preambleTrack);
                     break;
                 case REMOTE_MODULATED:
-                    handler.postDelayed(modulatedTrack, 200);
+                    handler.post(modulatedTrack);
                     break;
             }
         }
@@ -185,7 +215,17 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         }
 
         if (event.getPath().equalsIgnoreCase("PREFERENCE_UPDATED")) {
+            String key = new String(event.getData());
+            if (key.equalsIgnoreCase("server_ip")) {
+                serverIP = prefs.getString("server_ip", "192.168.1.10");
+            }
 
+            if (key.equalsIgnoreCase("fake_wear_mode")) {
+                useFakeWear = prefs.getBoolean("fake_wear_mode",false);
+                if (useFakeWear) {
+                    recreate();
+                }
+            }
         }
     }
 
@@ -193,6 +233,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
     private Modem modem = null;
     private WearCommClient client = null;
+    private FakeWearCommClient fakeWearCommClient = null;
     private AudioRunnable preambleTrack = null;
     private AudioRunnable modulatedTrack = null;
 
@@ -231,12 +272,27 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_MIC_NEAR_ULTRASOUND));
         Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_SPEAKER_NEAR_ULTRASOUND));
 
+        // get shared preference
+        prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        useFakeWear = prefs.getBoolean("fake_wear_mode",false);
 
-        // init google api client
-        client = WearCommClient.getInstance(this, this);
-        if (client != null) {
-            client.connect();
+        if (useFakeWear) {
+
+            serverIP = prefs.getString("server_ip", "192.168.1.10");
+            fakeWearCommClient = FakeWearCommClient.getInstance(this, serverIP);
+            if (fakeWearCommClient!=null) {
+                fakeWearCommClient.connect();
+            }
+        } else {
+            // init google api client
+            client = WearCommClient.getInstance(this, this);
+            if (client != null) {
+                client.connect();
+            }
         }
+
+
+
 
         // prepare Modem
         modem = Modem.getInstance(this);
@@ -268,6 +324,14 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         }
         folder = new File(Environment.getExternalStorageDirectory().getPath()+"/WearLock/");
+
+        mp = MediaPlayer.create(this, R.raw.sweeptest);
+        mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+            @Override
+            public void onCompletion(MediaPlayer mp) {
+                Log.d(TAG, "onCompletion: mp play finished.");
+            }
+        });
 
     }
 
@@ -353,12 +417,19 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         Log.d(TAG, "onDestroy: stop activity");
         EventBus.getDefault().post(new SendMessageEvent(STOP_ACTIVITY));
 
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                client.disconnect();
-            }
-        }, 500); // wait for the stop_activity message being sent out.
+
+        if (useFakeWear) {
+            fakeWearCommClient.disconnect();
+        } else {
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    client.disconnect();
+                }
+            }, 500); // wait for the stop_activity message being sent out.
+        }
+
+
 
         super.onDestroy();
     }
@@ -376,13 +447,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             try {
                 if (state == REMOTE_MODULATED) {
                     filename = sdf.format(filedate)+"-modulated"+".raw";
-//                    rec = File.createTempFile("modulated",".raw", audioFolder);
                 } else if (state == REMOTE_PREAMBLE) {
                     filename = sdf.format(filedate)+"-preamble"+".raw";
-//                    rec = File.createTempFile("preamble",".raw", audioFolder);
                 } else {
                     filename = sdf.format(filedate)+"-recording"+".raw";
-//                    rec = File.createTempFile("recording",".raw", audioFolder);
                 }
 
                 // create file
@@ -392,6 +460,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 }
 
                 // receive file
+                // if use fake wear, this event will not be triggered, so this calling is safe.
                 event.getChannel().receiveFile(client.getGoogleApiClient(), Uri.fromFile(rec), false);
 
                 Log.d(TAG, "onChannelOpened: Saving data to file:"+rec.getName());
@@ -406,17 +475,18 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     public void onFileReceivedEvent(FileReceivedEvent event) {
         Log.d(TAG, "onFileReceivedEvent: file received. time cost:"+(System.currentTimeMillis()-fileSentTime)+"ms");
 
-
-        // run data analysis here.
-//        File file = new File(Environment.getExternalStorageDirectory().getPath(), "rec.raw");
         Chunk chunk = null;
 
-        chunk = new Chunk(true, IOUtils.loadFromFile(rec)); // true big endian
+        if (useFakeWear) {
+            chunk = new Chunk(true, IOUtils.loadFromFile(new File("/sdcard/WearLock/tmp.raw"))); // we fix file name in this case.
+        } else {
+            chunk = new Chunk(true, IOUtils.loadFromFile(rec)); // true big endian
+        }
         double[] input = chunk.getDoubleBuffer();
 
         EventBus.getDefault().post(new MessageEvent(TAG, "load "+input.length+" samples."));
 
-        SlidingWindow sw = new SlidingWindow(4096,2048,input);
+        SlidingWindow sw = new SlidingWindow(4096, 2048, input);
 
         SilenceDetector sd = new SilenceDetector(20.0);
 
@@ -436,13 +506,13 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
             if (sd.isSilence(chunkData)) {
                 // silent do nothing.
-                if (isClipStart == true) {
+                if (isClipStart) {
                     isClipStart = false;
                     endIndexArray.add(sw.getStart());
                 }
             } else {
                 // detected sound
-                if (isClipStart == false) {
+                if (!isClipStart) {
                     isClipStart = true;
                     startIndexArray.add(sw.getStart());
                 }
@@ -466,7 +536,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         Log.d(TAG, "onFileReceivedEvent: rough estimate of CNR:"+CNR);
         EventBus.getDefault().post(new MessageEvent(TAG, "rough estimate of CNR:"+String.format("%.4f",CNR),"/UPDATE_STATUS"));
 
-        if (isClipStart == true) {
+        if (isClipStart) {
             isClipStart = false;
             endIndexArray.add(chunk.getDoubleBuffer().length);
         }
@@ -476,7 +546,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             throw new IllegalArgumentException("chunk start and end size mismatch.");
         }
 
-        // fall back to max SPK chunk to run preamble detection.
+        // fall back to max SPL chunk to run preamble detection.
         if (startIndexArray.size() == 0) {
             EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx,"/UPDATE_STATUS"));
             startIndexArray.add(maxStartIdx);

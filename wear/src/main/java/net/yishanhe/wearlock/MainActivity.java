@@ -8,6 +8,7 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.wearable.activity.WearableActivity;
@@ -65,8 +66,10 @@ public class MainActivity extends WearableActivity {
     private static final String SEND_RECORDING = "/send_recording";
     private static final String RECORDING_STARTED = "/RECORDING_STARTED";
     private static final String STOP_ACTIVITY = "/stop_activity";
-    private static final int REQUEST_WRITE_STORAGE = 101;
-    private static final int REQUEST_RECORD_AUDIO = 102;
+    // Permissions for Android M.
+    private static final int REQUEST_PERMISSIONS = 101;
+    private static String[] PERMISSIONS = {Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.RECORD_AUDIO};
 
     private WearCommClient client = null;
     private AudioReader mic = null;
@@ -100,40 +103,26 @@ public class MainActivity extends WearableActivity {
         Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_MIC_NEAR_ULTRASOUND));
         Log.d(TAG, "onCreate: "+am.getProperty(AudioManager.PROPERTY_SUPPORT_SPEAKER_NEAR_ULTRASOUND));
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_WRITE_STORAGE);
-        }
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_RECORD_AUDIO);
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, PERMISSIONS, REQUEST_PERMISSIONS);
         }
 
     }
 
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         switch (requestCode) {
-            case REQUEST_WRITE_STORAGE:
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-//                    this.recreate();
-                    Log.d(TAG, "Write to external storage permission granted.");
+            case REQUEST_PERMISSIONS:
+                if (PermissionUtil.verifyPermissions(grantResults)) {
+                    Toast.makeText(this, "Permissions granted.", Toast.LENGTH_SHORT).show();
+                    recreate();
                 } else {
-                    Log.d(TAG, "Write to external storage permission denied.");
+                    Toast.makeText(this, "Permissions not granted.", Toast.LENGTH_SHORT).show();
                 }
-                break;
-
-            case REQUEST_RECORD_AUDIO:
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-//                    this.recreate();
-                    Log.d(TAG, "Record audio permission granted.");
-                } else {
-                    Log.d(TAG, "Record audio permission denied.");
-                }
-                break;
         }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
     @OnClick(R.id.btn)

@@ -87,13 +87,13 @@
             app:fab_label="Modulated Message" />
 
         <com.github.clans.fab.FloatingActionButton
-            android:id="@+id/fab_reset"
+            android:id="@+id/fab_fst"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:src="@drawable/ic_autorenew_white_24dp"
+            android:src="@drawable/ic_surround_sound_white_24dp"
             app:fab_colorNormal="@color/colorAccent"
             app:fab_size="mini"
-            app:fab_label="Reset"/>
+            app:fab_label="FST"/>
 
         <com.github.clans.fab.FloatingActionButton
             android:id="@+id/fab_clean"
