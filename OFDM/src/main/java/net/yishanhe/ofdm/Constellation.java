@@ -13,7 +13,7 @@ public class Constellation {
 
 
     public static enum ModulationType {
-        BASK, BPSK, QASK, QPSK, EightQAM, EightPSK
+        BASK, BPSK, QASK, QPSK, EightQAM, EightPSK, SixteenQAM
     }
 
     private ModulationType type;
@@ -90,6 +90,10 @@ public class Constellation {
                 bitStringToComplexMapping.put("110", new Complex(-0.366, 0.366));
                 bitStringToComplexMapping.put("000", new Complex(-0.366, -0.366));
                 bitStringToComplexMapping.put("011", new Complex(0.366, -0.366));
+                break;
+
+            case SixteenQAM:
+                this.constellationSize = 16;
                 break;
 
         }

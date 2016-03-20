@@ -348,31 +348,55 @@ public class DSPUtils {
         return (int)Math.pow(2, NextPow2Exp(n));
     }
 
-    /**
-     * Calculates the local (linear) energy of an audio buffer.
-     *
-     * @param buffer
-     *            The audio buffer.
-     * @return The local (linear) energy of an audio buffer.
-     */
-    public static double localEnergy(final double[] buffer) {
-        double power = 0.0D;
+
+    public static double soundPressureLevel(final double[] buffer, int offset, int length) {
+        // reference pressure pref = 0.00002;
+        double sqsum= 0.0;
+        double sum = 0.0;
         for (double element : buffer) {
-            power += element * element;
+            sum += element;
+            sqsum += element * element;
         }
-        return power;
+
+        double power = (sqsum - sum*sum / length)/length;
+        return Math.log10(power) * 10f;
     }
 
-    /**
-     * Returns the dBSPL for a buffer.
-     *
-     * @param buffer
-     *            The buffer with audio information.
-     * @return The dBSPL level for the buffer.
-     */
     public static double soundPressureLevel(final double[] buffer) {
-        // reference pressure pref = 0.00002;
-        return 10.0 * Math.log10(localEnergy(buffer)/buffer.length) + 94;
+        return soundPressureLevel(buffer, 0, buffer.length);
+    }
+
+    //@TODO: avoid copying or creating new array using offset maintaining a single buffer.
+
+    public static void biasAndRange(double[] input, double[] output) {
+        biasAndRange(input, 0, input.length, output);
+    }
+
+    public static void biasAndRange(double[] input, int offset, int length, double[] output) {
+        double total = 0.0;
+        double max = 1.0;
+        double min = -1.0;
+
+        for (int i = offset; i < offset + length; i++) {
+            double val = input[i];
+
+            total += val;
+
+            if (val < min) {
+                min = val;
+            }
+            if (val > max) {
+                max = val;
+            }
+        }
+
+        double bias =  total/length;
+        double bmin = min + bias;
+        double bmax = max - bias;
+        double range = Math.abs(bmax - bmin) / 2.0;
+
+        output[0] = bias;
+        output[1] = range;  //  The range, i.e. the absolute value of the larges departure from the bias level.
     }
 
 

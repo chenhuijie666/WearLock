@@ -151,6 +151,7 @@ public class PhoneServer {
                         threadPool.get(i).output.write(buffer, 0, read);
                         bytesRead += read;
                         Log.d(TAG, "sendFile: read "+read+", sent/full"+bytesRead+"/"+fileSize);
+                        threadPool.get(i).output.flush();
                     }
                     in.close();
                     Log.d(TAG, "sendFile: file sent.");

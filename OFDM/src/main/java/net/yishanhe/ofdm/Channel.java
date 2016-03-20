@@ -220,11 +220,14 @@ public class Channel {
         for (int i = 0; i < equalized.length; i++) {
             SubChannel subChannel =  subChannels.get(dataSubChannelIdx.get(i));
             equalized[i] = subChannel.getValue().multiply(subChannel.getEst().reciprocal());
+            subChannel.setEst(equalized[i]);
         }
         return equalized;
     }
 
-    public double getSNRinDB() {
+    public double getInputSNRinDB() {
+
+        // input SNR, signal portion vs noise portion, after sync.
 
         double signalLocalEnergy = 0.0;
         double noiseLocalEnergy = 0.0;
@@ -233,17 +236,39 @@ public class Channel {
         // https://en.wikipedia.org/wiki/Root_mean_square
         for (int i = 0; i < fftSize; i++) {
 
-            if (dataSubChannelIdx.contains(i)) {
+            if (dataSubChannelIdx.contains(i) || pilotSubChannelIdx.contains(i)) {
                 signalLocalEnergy += Math.pow(subChannels.get(i).getValue().getImaginary(),2) +  Math.pow(subChannels.get(i).getValue().getReal(),2);
             } else {
                 noiseLocalEnergy += Math.pow(subChannels.get(i).getValue().getImaginary(),2) +  Math.pow(subChannels.get(i).getValue().getReal(),2);
             }
         }
 
-        signalLocalEnergy = signalLocalEnergy / dataSubChannelIdx.size() /dataSubChannelIdx.size();
-        noiseLocalEnergy = noiseLocalEnergy / (fftSize-dataSubChannelIdx.size()) / (fftSize-dataSubChannelIdx.size());
+        signalLocalEnergy = signalLocalEnergy / (dataSubChannelIdx.size()+pilotSubChannelIdx.size()) /(dataSubChannelIdx.size()+pilotSubChannelIdx.size());
+        noiseLocalEnergy = noiseLocalEnergy / (fftSize-dataSubChannelIdx.size()-pilotSubChannelIdx.size()) / (fftSize-dataSubChannelIdx.size()-pilotSubChannelIdx.size());
         return 10*Math.log10(signalLocalEnergy/noiseLocalEnergy);
     }
+
+
+    public double getPilotSNRinDB() {
+        double pilotLocalEnergy = 0.0;
+        double noiseLocalEnergy = 0.0;
+
+        for (int i = 0; i < fftSize; i++) {
+
+            if (pilotSubChannelIdx.contains(i)) {
+                pilotLocalEnergy += Math.pow(subChannels.get(i).getValue().getImaginary(),2) +  Math.pow(subChannels.get(i).getValue().getReal(),2);
+            } else if (!dataSubChannelIdx.contains(i)){
+                noiseLocalEnergy += Math.pow(subChannels.get(i).getValue().getImaginary(),2) +  Math.pow(subChannels.get(i).getValue().getReal(),2);
+            }
+        }
+
+        pilotLocalEnergy = pilotLocalEnergy / pilotSubChannelIdx.size() /pilotSubChannelIdx.size();
+        noiseLocalEnergy = noiseLocalEnergy / (fftSize-dataSubChannelIdx.size()-pilotSubChannelIdx.size()) / (fftSize-dataSubChannelIdx.size()-pilotSubChannelIdx.size());
+        return 10*Math.log10(pilotLocalEnergy/noiseLocalEnergy);
+
+    }
+
+
 
 
 

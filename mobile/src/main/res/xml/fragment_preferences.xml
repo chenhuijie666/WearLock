@@ -73,13 +73,19 @@
                 android:key="post_preamble_guard_size"
                 android:defaultValue="1024" />
 
+            <CheckBoxPreference
+                android:key="channel_probing"
+                android:defaultValue="false"
+                android:title="Channel Probing Preamble"/>
+
+
         </PreferenceScreen>
 
         <PreferenceScreen
             android:title="Guard">
 
             <ListPreference
-                android:title="Guard Type"
+                android:title="OFDM Symbol Guard Type"
                 android:key="guard_type"
                 android:defaultValue="0"
                 android:summary="%s"
@@ -98,6 +104,10 @@
             android:key="fft_size"
             android:defaultValue="256" />
 
+        <EditTextPreference
+            android:title="Volume"
+            android:key="volume"
+            android:defaultValue="1.0" />
 
         <PreferenceScreen
             android:title="Sub-Channel">

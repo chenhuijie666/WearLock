@@ -52,6 +52,7 @@ public class Modem {
     private boolean isChannelTestModeON;
     private boolean isExperimentModeON;
     private boolean isDebugOutputON;
+    private boolean isChannelProbingON;
 
     private int guardSize;
     private int fftSize;
@@ -63,6 +64,7 @@ public class Modem {
     private double preambleStartFreq;
     private double preambleFreqRange;
     private int postPreambleGuardSize;
+    private int preambleWithProbingSize;
     int numberOfFrames;
 
 //    private AudioWriter audioWriter = null;
@@ -77,7 +79,8 @@ public class Modem {
 //    private Thread writerThread;
 
     // @TODO: put it into preference
-    public final static int VOL_MAXIMUM = Short.MAX_VALUE - 2767; // loudness.
+    public final static int VOL_MAXIMUM = Short.MAX_VALUE - 767; // loudness.
+    private int volume;
 
     /**
      * Will handling the OFDM primitives and Android Audio IO
@@ -103,6 +106,7 @@ public class Modem {
         this.isChannelTestModeON = prefs.getBoolean("channel_test_mode",false);
         this.isDebugOutputON = prefs.getBoolean("debug_output",true);
         this.isExperimentModeON  = prefs.getBoolean("experiment_mode", false);
+        this.isChannelProbingON = prefs.getBoolean("channel_probing",false);
         this.guardSize = Integer.parseInt(prefs.getString("guard_size","128"));
         String[] pilotIndex = prefs.getString("pilot_index","7,11,15,19,23,27,31,35").split(",");
         this.pilotSubChannelIdx = new ArrayList<>(pilotIndex.length);
@@ -123,6 +127,7 @@ public class Modem {
         int modulationTypeIndex = Integer.parseInt(prefs.getString("modulation_type","0"));
         this.modulationType = ModulationType.values()[modulationTypeIndex];
         this.fftSize = Integer.parseInt(prefs.getString("fft_size","256"));
+        this.volume = (int)(Double.valueOf(prefs.getString("volume","1.0"))*VOL_MAXIMUM);
         Log.d(TAG, "LoadParameter: parameters loaded.");
     }
 
@@ -137,7 +142,28 @@ public class Modem {
     public void makePreamble() {
         this.preamble = new Preamble(preambleSize, postPreambleGuardSize, preambleStartFreq, preambleFreqRange, sampleRateInHZ);
         this.adaptiveModulation = new AdaptiveModulation(preamble);
-        preambleInShort = doubleToAudioShort(scaleDoubles(preamble.getPreamble()));
+
+        if (isChannelProbingON) {
+            //
+            preambleWithProbingSize = preambleSize + postPreambleGuardSize + fftSize;
+            double[] preambleWithProbing = new double[preambleWithProbingSize];
+            Complex[] freqProbingFrame = new Complex[fftSize];
+            for (int i = 0; i < fftSize; i++) {
+                if (pilotSubChannelIdx.contains(i)) {
+                    freqProbingFrame[i] = new Complex(1.0, 0.0);
+                } else {
+                    freqProbingFrame[i] = Complex.ZERO;
+                }
+            }
+
+            double[] freqProbingFrameIfftBuffer = DSPUtils.getReals(DSPUtils.ifft(freqProbingFrame, fftSize));
+            System.arraycopy(scaleDoubles(preamble.getPreamble()), 0, preambleWithProbing, 0, preambleSize);
+            System.arraycopy(scaleDoubles(freqProbingFrameIfftBuffer), 0, preambleWithProbing, preambleSize + postPreambleGuardSize, freqProbingFrameIfftBuffer.length);
+            preambleInShort = doubleToAudioShort(preambleWithProbing);
+
+        } else {
+            preambleInShort = doubleToAudioShort(scaleDoubles(preamble.getPreamble()));
+        }
     }
 
     public  void makeModulated(String inputPin) {
@@ -154,6 +180,7 @@ public class Modem {
             }
             EventBus.getDefault().post(new MessageEvent(TAG, inputPin, "/fixed_input"));
         }
+
         // @TODO: use the api in chunk class.
 
         target = inputPin;
@@ -164,11 +191,28 @@ public class Modem {
         ArrayList<Complex[]> parallel = frame.s2p(serial);
         Log.d(TAG, "makeModulated: parallel complex size "+ parallel.size());
         numberOfFrames = parallel.size();
-        int outputLen = preambleSize + postPreambleGuardSize + numberOfFrames * (guardSize + fftSize);
+
+        int outputLen;
+        outputLen = preambleSize + postPreambleGuardSize + numberOfFrames * (guardSize + fftSize);
+
         modulated = new double[outputLen];
         Arrays.fill(modulated, 0.0);
         // copy in the preamble
         System.arraycopy(scaleDoubles(preamble.getPreamble()), 0, modulated, 0, preambleSize);
+
+//        if (isFreqSyncON) {
+//            Complex[] freqSyncFrame = new Complex[fftSize];
+//            for (int i = 0; i < fftSize; i++) {
+//                if (pilotSubChannelIdx.contains(i)) {
+//                    freqSyncFrame[i] = new Complex(1.0, 0.0);
+//                } else {
+//                    freqSyncFrame[i] = Complex.ZERO;
+//                }
+//            }
+//            double[] freqSyncFrameIfftBuffer = DSPUtils.getReals(DSPUtils.ifft(freqSyncFrame, fftSize));
+//            System.arraycopy(scaleDoubles(freqSyncFrameIfftBuffer), 0, modulated, preambleSize + postPreambleGuardSize, freqSyncFrameIfftBuffer.length);
+//
+//        }
 
         for (int i = 0; i < parallel.size(); i++) {
             Complex[] singleFrame = parallel.get(i);
@@ -184,8 +228,8 @@ public class Modem {
                     preambleSize + postPreambleGuardSize + i * (guardSize + fftSize) + guardSize,
                     ifftBuffer.length);
 
-            // TODO: cyclic-prefix
         }
+
 //        for (int i = 0; i < modulated.length; i++) {
 //           System.out.println("modulated i:"+i+" double: "+modulated[i]);
 //        }
@@ -195,11 +239,53 @@ public class Modem {
 //        } catch (IOException e) {
 //            e.printStackTrace();
 //        }
+
         modulatedInShort = doubleToAudioShort(modulated);
         EventBus.getDefault().post(new MessageEvent(TAG, "Modulated audio track is made.","/UPDATE_STATUS"));
 
     }
 
+    public void channelProbing(Chunk whole, int start, int end ) {
+
+        if (isChannelProbingON) {
+
+            int inputLen = whole.getDoubleBuffer().length;
+
+            // get a smaller chunk
+            Chunk target = whole.getSubChunk(start, Math.min(end+preambleWithProbingSize, inputLen));
+
+            int delay = Synchronization.preambleTimeSync(preamble.getPreamble(), target.getDoubleBuffer());
+
+            Log.d(TAG, "channelProbing: delay " + Math.abs(delay));
+
+            // try synchronization here
+
+
+            // do channel probing here
+            target.skip(Math.abs(delay));
+            target.skip(preambleSize+postPreambleGuardSize);
+            double[] channelProbingFrame = target.getDoubleBuffer(0, fftSize);
+            Complex[] fftBuffer = DSPUtils.fft(channelProbingFrame, fftSize);
+            if (isDebugOutputON) {
+                for (int j = 0; j < fftBuffer.length; j++) {
+                    if (channel.getPilotSubChannelIdx().contains(j)){
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        if (phaseAngle<0) {
+                            phaseAngle += 2*Math.PI;
+                        }
+                        System.out.println("Pilot complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                    } else{
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        if (phaseAngle<0) {
+                            phaseAngle += 2*Math.PI;
+                        }
+                        System.out.println("Other complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                    }
+
+                }
+            }
+        }
+    }
 
     public String deModulate(Chunk whole, int start, int end ) {
 
@@ -224,6 +310,7 @@ public class Modem {
         if ( (Math.abs(delay)+start) > inputLen) {
             return "bad signal. aborted.";
         }
+        //
         target.skip(Math.abs(delay));
 
         // cut preamble and post preamble
@@ -245,22 +332,20 @@ public class Modem {
             Complex[] fftBuffer = DSPUtils.fft(ofdmOneFrame, fftSize);
 
             if (isDebugOutputON) {
-                System.out.println("DATA");
                 for (int j = 0; j < fftBuffer.length; j++) {
                     if (channel.getDataSubChannelIdx().contains(j)){
                         double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
                         if (phaseAngle<0) {
                             phaseAngle += 2*Math.PI;
                         }
-                        System.out.println("complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                        System.out.println("DATA complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
                     }
-                }
-                System.out.println("PILOT");
-                for (int j = 0; j < fftBuffer.length; j++) {
-                    // get data
                     if (channel.getPilotSubChannelIdx().contains(j)){
                         double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-                        System.out.println("complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                        if (phaseAngle<0) {
+                            phaseAngle += 2*Math.PI;
+                        }
+                        System.out.println("PILOT complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
                     }
                 }
             }
@@ -268,9 +353,13 @@ public class Modem {
 
             channel.setChannelBuffer(fftBuffer);
             channel.estimate();
-            EventBus.getDefault().post(new MessageEvent(TAG, "SNR estimated: "+String.format("%.4f",channel.getSNRinDB()),"/UPDATE_STATUS"));
-
-            EventBus.getDefault().post(new MessageEvent(TAG, "Eb/N0 estimated: "+String.format("%.4f",channel.getSNRinDB()-10*Math.log10(dataSubChannelIdx.size()/(double)fftSize)),"/UPDATE_STATUS"));
+            EventBus.getDefault().post(new MessageEvent(TAG, "Input SNR estimated: "+String.format("%.4f",channel.getInputSNRinDB()),"/UPDATE_STATUS"));
+            EventBus.getDefault().post(new MessageEvent(TAG, "Pilot SNR estimated: "+String.format("%.4f",channel.getPilotSNRinDB()),"/UPDATE_STATUS"));
+            EventBus.getDefault().post(new MessageEvent(
+                    TAG,
+                    "Eb/N0 estimated: " + String.format("%.4f",channel.getInputSNRinDB()
+                            -10*Math.log10(dataSubChannelIdx.size()/(double)(fftSize-pilotSubChannelIdx.size()-dataSubChannelIdx.size()))),
+                    "/UPDATE_STATUS"));
 
             Complex[] equalized = channel.getEqualized();
 
@@ -302,6 +391,7 @@ public class Modem {
     public static double[] scaleDoubles(double[] input) {
         double[] scaled = new double[input.length];
         double maxVal = Double.MIN_VALUE;
+
         for (int i = 0; i < input.length; i++) {
             if (maxVal < input[i]) {
                 maxVal = input[i];
@@ -314,11 +404,11 @@ public class Modem {
         return scaled;
     }
 
-    public static short[] doubleToAudioShort(double[] doubleBuffer) {
+    public short[] doubleToAudioShort(double[] doubleBuffer) {
         short[] shortBuffer = new short[doubleBuffer.length];
         Arrays.fill(shortBuffer, (short)0);
         for (int i = 0; i < shortBuffer.length; i++) {
-            shortBuffer[i] = (short) (doubleBuffer[i]* VOL_MAXIMUM);
+            shortBuffer[i] = (short) (doubleBuffer[i]* volume);
         }
         return shortBuffer;
     }

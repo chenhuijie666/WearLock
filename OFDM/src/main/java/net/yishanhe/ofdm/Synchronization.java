@@ -2,6 +2,10 @@ package net.yishanhe.ofdm;
 
 import net.yishanhe.utils.DSPUtils;
 
+import org.apache.commons.math3.complex.Complex;
+
+import java.util.ArrayList;
+
 /**
  * Created by syi on 2/13/16.
  */
@@ -30,5 +34,34 @@ public class Synchronization {
         }
         System.out.println("synchronized: "+maxVal);
         return delay;
+    }
+
+    public static int preambleFreqSync(double[] input, int offset, int length, int range, ArrayList<Integer> pilotSubChannelIdx) {
+
+        // use only the pilots with null channels.
+        int maxIndex = 0;
+        double maxRMS = -1000.0;
+        for (int i = -range; i < range+1; i++) {
+            double[] toFFT = new double[length];
+            System.arraycopy(input, offset+i, toFFT, 0, length);
+            Complex[] fftBuffer = DSPUtils.fft(toFFT, length);
+            double rms = 0.0;
+
+            for (int j = 0; i < fftBuffer.length; j++) {
+                if (pilotSubChannelIdx.contains(j)) {
+                    // get power of pilots
+                    rms += Math.pow(fftBuffer[j].getImaginary(),2) +  Math.pow(fftBuffer[j].getReal(),2);
+                }
+            }
+
+            rms = rms/pilotSubChannelIdx.size();
+
+            if (rms>maxRMS) {
+                maxRMS = rms;
+                maxIndex = i;
+            }
+        }
+
+        return maxIndex;
     }
 }

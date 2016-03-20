@@ -119,11 +119,12 @@ public class Chunk {
     }
 
     public double[] getDoubleBuffer() {
+        // return the full buffer
         return doubleBuffer;
     }
 
     public double[] getDoubleBuffer(int start, int end) {
-
+        // return partial buffer
         double[] output = new double[end-start];
         for (int i = start; i < end; i++) {
             output[i-start] = doubleBuffer[i];

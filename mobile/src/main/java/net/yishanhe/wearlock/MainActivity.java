@@ -90,7 +90,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
 
 
-
+    private double cumSPL = 0.0;
+    private int cumSPLCtr = 0;
 
 
     // BINDING Bufferknife
@@ -489,7 +490,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         SlidingWindow sw = new SlidingWindow(4096, 2048, input);
 
-        SilenceDetector sd = new SilenceDetector(20.0);
+        SilenceDetector sd = new SilenceDetector(-75.0);
 
         boolean isClipStart = false;
         ArrayList<Integer> startIndexArray = new ArrayList<>();
@@ -534,8 +535,12 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         }
         CNR = maxSPL - minSPL;
+        cumSPL += maxSPL;
+        cumSPLCtr += 1;
         Log.d(TAG, "onFileReceivedEvent: rough estimate of CNR:"+CNR);
-        EventBus.getDefault().post(new MessageEvent(TAG, "rough estimate of CNR:"+String.format("%.4f",CNR),"/UPDATE_STATUS"));
+        EventBus.getDefault().post(new MessageEvent(TAG, "maxSPL:"+String.format("%.4f",maxSPL)
+                +", cum SPL:"+String.format("%.4f", cumSPL/(double)cumSPLCtr)
+                +", CNR:"+String.format("%.4f",CNR),"/UPDATE_STATUS"));
 
         if (isClipStart) {
             isClipStart = false;
@@ -580,6 +585,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
             case REMOTE_PREAMBLE:
                 // replay to send to chose modulation.
+                modem.channelProbing(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
                 break;
 
             case REMOTE_MODULATED:
