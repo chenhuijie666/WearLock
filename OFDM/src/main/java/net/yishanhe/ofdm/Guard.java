@@ -28,10 +28,13 @@ public class Guard {
     public void prependGuard(Chunk chunk) {
         if (type == GuardType.ZP) {
             double[] padded = DSPUtils.padZeros(chunk.getDoubleBuffer(), this.guardSize, DSPUtils.PadPos.HEAD);
+            chunk.setDoubleBuffer(padded);
         }
     }
 
     public void removeGuard(Chunk chunk) {
-        chunk.skip(guardSize);
+        if (type == GuardType.ZP) {
+            chunk.skip(guardSize);
+        } 
     }
 }

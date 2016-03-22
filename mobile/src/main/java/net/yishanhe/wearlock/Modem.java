@@ -224,10 +224,18 @@ public class Modem {
             double[] ifftBuffer = DSPUtils.getReals(DSPUtils.ifft(singleFrame, fftSize));
 
             // ZP
-            System.arraycopy(scaleDoubles(ifftBuffer), 0, modulated,
-                    preambleSize + postPreambleGuardSize + i * (guardSize + fftSize) + guardSize,
-                    ifftBuffer.length);
-
+            if (guardType == GuardType.CP) {
+                System.arraycopy(scaleDoubles(ifftBuffer), 0, modulated,
+                        preambleSize + postPreambleGuardSize + i * (guardSize + fftSize) + guardSize,
+                        ifftBuffer.length);
+                System.arraycopy(scaleDoubles(ifftBuffer), ifftBuffer.length-guardSize, modulated,
+                        preambleSize + postPreambleGuardSize + i * (guardSize + fftSize),
+                        guardSize);
+            } else {
+                System.arraycopy(scaleDoubles(ifftBuffer), 0, modulated,
+                        preambleSize + postPreambleGuardSize + i * (guardSize + fftSize) + guardSize,
+                        ifftBuffer.length);
+            }
         }
 
 //        for (int i = 0; i < modulated.length; i++) {
@@ -259,10 +267,10 @@ public class Modem {
             Log.d(TAG, "channelProbing: delay " + Math.abs(delay));
 
             // try synchronization here
-
-
+            int freqDelay = Synchronization.preambleFreqSync(target.getDoubleBuffer(), (Math.abs(delay)+preambleSize+postPreambleGuardSize), fftSize, 2, pilotSubChannelIdx);
+            Log.d(TAG, "channelProbing: freq delay " + freqDelay);
             // do channel probing here
-            target.skip(Math.abs(delay));
+            target.skip(Math.abs(delay)+freqDelay);
             target.skip(preambleSize+postPreambleGuardSize);
             double[] channelProbingFrame = target.getDoubleBuffer(0, fftSize);
             Complex[] fftBuffer = DSPUtils.fft(channelProbingFrame, fftSize);
@@ -270,15 +278,15 @@ public class Modem {
                 for (int j = 0; j < fftBuffer.length; j++) {
                     if (channel.getPilotSubChannelIdx().contains(j)){
                         double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-                        if (phaseAngle<0) {
-                            phaseAngle += 2*Math.PI;
-                        }
+//                        if (phaseAngle<0) {
+//                            phaseAngle += 2*Math.PI;
+//                        }
                         System.out.println("Pilot complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
                     } else{
                         double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-                        if (phaseAngle<0) {
-                            phaseAngle += 2*Math.PI;
-                        }
+//                        if (phaseAngle<0) {
+//                            phaseAngle += 2*Math.PI;
+//                        }
                         System.out.println("Other complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
                     }
 
@@ -305,24 +313,33 @@ public class Modem {
         Chunk target = whole.getSubChunk(start, Math.min(end+modulated.length, whole.getDoubleBuffer().length));
 
         int delay = Synchronization.preambleTimeSync(preamble.getPreamble(), target.getDoubleBuffer());
-        EventBus.getDefault().post(new MessageEvent(TAG, "synchronization needs to skip " + Math.abs(delay) + " samples", "/UPDATE_STATUS"));
-        // adjust sync
-        if ( (Math.abs(delay)+start) > inputLen) {
-            return "bad signal. aborted.";
-        }
-        //
-        target.skip(Math.abs(delay));
+//        int freqDelay = Synchronization.preambleFreqSync(target.getDoubleBuffer(), (Math.abs(delay)+preambleSize+postPreambleGuardSize), fftSize, 2, pilotSubChannelIdx);
 
-        // cut preamble and post preamble
-        if ( (preambleSize+postPreambleGuardSize)>target.getDoubleBuffer().length ) {
-            return "bad signal. aborted.";
+        EventBus.getDefault().post(new MessageEvent(TAG, "synchronization needs to skip " + Math.abs(delay) + " samples", "/UPDATE_STATUS"));
+
+        if (guardType == GuardType.ZP) {
+
+            if ( (Math.abs(delay)+start) > inputLen) {
+                return "bad signal. aborted.";
+            }
+            target.skip(Math.abs(delay));
+            // cut preamble and post preamble
+            if ( (preambleSize+postPreambleGuardSize)>target.getDoubleBuffer().length ) {
+                return "bad signal. aborted.";
+            }
+            target.skip(preambleSize+postPreambleGuardSize);
+
+        } else {
+
+            int cpDelay = Synchronization.cpTimeSync(target.getDoubleBuffer(), Math.abs(delay)+preambleSize+postPreambleGuardSize,fftSize+guardSize, guardSize, 20);
+            System.out.println("CP time sync delay: "+cpDelay);
+            target.skip(Math.abs(delay)+preambleSize+postPreambleGuardSize+cpDelay);
         }
-        target.skip(preambleSize+postPreambleGuardSize);
 
         for (int i = 0; i < numberOfFrames; i++) {
-            // skip the guard
-            // @TODO new skip implemented by a pointer index.
+
             target.skip(guardSize);
+
             // read one symbol
             double[] ofdmOneFrame = target.getDoubleBuffer(0, fftSize);
             // skip this symbol
