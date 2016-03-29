@@ -1,8 +1,14 @@
 package net.yishanhe.ofdm;
 
+
 import net.yishanhe.utils.DSPUtils;
 
+import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Exchanger;
 
 /**
  * Created by syi on 2/12/16.
@@ -51,10 +57,11 @@ public class Preamble {
 
         // using Ed's scheme
         // TODO: fade in fade out. in a smart way
-        int thirdIndex = preamble.length/3;
+        int thirdIndex = preambleSize/3;
         final double volDelta = 1.0/(double)thirdIndex;
         double volume = 0;
         double freqDelta = freqRange/preambleSize;
+//        double freqDelta = freqRange*2/preambleSize;
 
         for (int i =0; i < preamble.length; i++) {
             if (i < thirdIndex) {
@@ -65,16 +72,20 @@ public class Preamble {
                 volume -= volDelta;
             }
 
+            // @TODO: try increasing then decreasing chirp.
             preamble[i] = getSample(i, startFreq+freqDelta*i, 0, samplingRate) * volume;
+
         }
 
         return preamble;
     }
 
     private static double getSample(int sampleIndex, double subCarrierFreq, double subCarrierPhase, double samplingRate){
+
         if (subCarrierFreq > samplingRate/2) {
             throw new IllegalArgumentException("Frequency above nyquist.");
         }
+
         return Math.sin( 2 * Math.PI * sampleIndex * (subCarrierFreq/samplingRate) + subCarrierPhase);
     }
 
@@ -89,12 +100,23 @@ public class Preamble {
         double maxVal = Double.MIN_VALUE;
         int maxlag = (result.length-1)/2;
 
-        for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
-            if (result[i] > maxVal) {
-                maxVal = result[i];
+//        try {
+//            PrintWriter pw = new PrintWriter("/sdcard/WearLock/xcorr_peak_dump.txt");
+            for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
+//            System.out.println(result[i]);
+//                pw.println(result[i]);
+                if (result[i] > maxVal) {
+                    maxVal = result[i];
+                }
             }
-        }
+//            pw.close();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
 
+
+
+//        ArrayList<Map<Integer, Double>> peaks = DSPUtils.peak_detection(result, );
 //        System.out.println(maxVal);
         return maxVal;
 

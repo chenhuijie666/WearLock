@@ -51,11 +51,12 @@ public class IOUtils {
             if (bigEndian) {
                 // big endian
                 outBuffer[ox++] =  ((short) ((inBuffer[ix++] << 8) |
-                        (inBuffer[ix++] & 0xFF))) * (1.0f / 32768.0f);
+                        (inBuffer[ix++] & 0xFF))) * (1.0f / 32767.0f);
+//                (inBuffer[ix++] & 0xFF))) * (1.0f / 32768.0f);
             } else {
                 // little endian
-                int x = (inBuffer[ix++] & 0xFF) | ((inBuffer[ix++] & 0xFF) << 8);
-                outBuffer[ox++] = (x - 32768) * (1.0f / 32768.0f);
+//                int x = (inBuffer[ix++] & 0xFF) | ((inBuffer[ix++] & 0xFF) << 8);
+//                outBuffer[ox++] = (x - 32768) * (1.0f / 32768.0f);
             }
         }
 
@@ -68,13 +69,15 @@ public class IOUtils {
         int ix = 0;
         for (int i = 0; i < inBuffer.length; i++) {
             if (bigEndian) {
-                int x = (int) (inBuffer[ix++] * 32768.0f);
+//                int x = (int) (inBuffer[ix++] * 32768.0f);
+                int x = (int) (inBuffer[ix++] * 32767.0f);
                 outBuffer[ox++] = (byte) (x >>> 8);
                 outBuffer[ox++] = (byte) x;
             } else {
-                int x = 32768 + (int) (inBuffer[ix++] * 32768.0);
-                outBuffer[ox++] = (byte) x;
-                outBuffer[ox++] = (byte) (x >>> 8);
+//                int x = (int) (inBuffer[ix++] * 32768.0f);
+//                int x = (int) (inBuffer[ix++] * 32767.0f);
+//                outBuffer[ox++] = (byte) x;
+//                outBuffer[ox++] = (byte) (x >>> 8);
             }
         }
         return outBuffer;

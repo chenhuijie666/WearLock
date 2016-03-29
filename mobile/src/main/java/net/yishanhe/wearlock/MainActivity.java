@@ -490,7 +490,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         SlidingWindow sw = new SlidingWindow(4096, 2048, input);
 
-        SilenceDetector sd = new SilenceDetector(-75.0);
+        SilenceDetector sd = new SilenceDetector(-70.0);
 
         boolean isClipStart = false;
         ArrayList<Integer> startIndexArray = new ArrayList<>();
@@ -529,18 +529,25 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             if (sd.getCurrentSPL() > maxSPL ) {
                 maxSPL = sd.getCurrentSPL();
                 System.out.println("maxSPD updated. " + maxSPL);
-                maxStartIdx = Math.max(sw.getStart()-1024,0);
-                maxEndIdx = Math.min(sw.getEnd()+1024,chunk.getDoubleBuffer().length);
+                maxStartIdx = Math.max(sw.getStart(),0);
+                maxEndIdx = Math.min(sw.getEnd(),chunk.getDoubleBuffer().length);
             }
 
         }
         CNR = maxSPL - minSPL;
-        cumSPL += maxSPL;
-        cumSPLCtr += 1;
+//        cumSPL += maxSPL;
+//        cumSPLCtr += 1;
         Log.d(TAG, "onFileReceivedEvent: rough estimate of CNR:"+CNR);
-        EventBus.getDefault().post(new MessageEvent(TAG, "maxSPL:"+String.format("%.4f",maxSPL)
-                +", cum SPL:"+String.format("%.4f", cumSPL/(double)cumSPLCtr)
-                +", CNR:"+String.format("%.4f",CNR),"/UPDATE_STATUS"));
+        EventBus.getDefault().post(new MessageEvent(TAG, "maxSPL:"+String.format("%.4f",maxSPL+94.0)
+                + ", minSPL:"+String.format("%.4f",minSPL+94.0)
+//                +", cum SPL:"+String.format("%.4f", cumSPL/(double)cumSPLCtr)
+                +", Peak SNR:"+String.format("%.4f",CNR),"/UPDATE_STATUS"));
+
+        EventBus.getDefault().post(new MessageEvent(
+                TAG,
+                "Eb/N0 estimated: " + String.format("%.4f",CNR+10*Math.log10(4.0/(Math.log(modem.getConstellationSize())/Math.log(2)))),
+                "/UPDATE_STATUS"));
+
 
         if (isClipStart) {
             isClipStart = false;
@@ -554,7 +561,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         // fall back to max SPL chunk to run preamble detection.
         if (startIndexArray.size() == 0) {
-            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx,"/UPDATE_STATUS"));
+//            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx,"/UPDATE_STATUS"));
             startIndexArray.add(maxStartIdx);
             endIndexArray.add(maxEndIdx);
 
@@ -574,9 +581,18 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         }
 
-        EventBus.getDefault().post(new MessageEvent(TAG, "test preamble:  "+ String.format("%.4f",maxXcorrVal),"/UPDATE_STATUS"));
+        // dump
 
-        if (maxXcorrVal < 0.1) {
+        Chunk toDump = chunk.getSubChunk(startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
+        try {
+            toDump.dump("/sdcard/WearLock/chunk_dumped.raw");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        EventBus.getDefault().post(new MessageEvent(TAG, "preamble:  "+ String.format("%.4f",maxXcorrVal),"/UPDATE_STATUS"));
+
+        if (maxXcorrVal < 0.05) {
             EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble signal too bad abort task.","/UPDATE_STATUS"));
             return;
         }
@@ -585,7 +601,16 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
             case REMOTE_PREAMBLE:
                 // replay to send to chose modulation.
-                modem.channelProbing(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
+                modem.channelProbing(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex), minSPL);
+                //(minSPL+97) // noise
+
+                // 100 50
+                // 75 48
+                // 50 44
+                // 25 39
+                // 10 26
+//                state = REMOTE_MODULATED;
+//                EventBus.getDefault().post(new SendMessageEvent(START_RECORDING));
                 break;
 
             case REMOTE_MODULATED:

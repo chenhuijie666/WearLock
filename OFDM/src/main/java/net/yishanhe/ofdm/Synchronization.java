@@ -4,6 +4,7 @@ import net.yishanhe.utils.DSPUtils;
 
 import org.apache.commons.math3.complex.Complex;
 
+import java.io.PrintWriter;
 import java.util.ArrayList;
 
 /**
@@ -26,13 +27,29 @@ public class Synchronization {
         double maxVal = Double.MIN_VALUE;
         int maxlag = Math.max(ref.length, input.length);
 
-        for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
-            if (result[i] > maxVal) {
-                maxVal = result[i];
-                delay = lag;
+
+        try {
+            PrintWriter pw = new PrintWriter("/sdcard/WearLock/xcorr_peak_dump.txt");
+            for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
+//            System.out.println(result[i]);
+                pw.println(result[i]);
+                if (result[i] > maxVal) {
+                    maxVal = result[i];
+                    delay = lag;
+                }
             }
+            pw.close();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        System.out.println("synchronized: "+maxVal);
+
+//        for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
+//            if (result[i] > maxVal) {
+//                maxVal = result[i];
+//                delay = lag;
+//            }
+//        }
+        System.out.println("synchronized: "+maxVal+", delay: "+delay);
         return delay;
     }
 

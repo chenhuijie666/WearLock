@@ -139,15 +139,17 @@
             <EditTextPreference
                 android:title="Pilot Sub-Channel Index"
                 android:key="pilot_index"
-                android:summary="Entering index with spaces."
                 android:defaultValue="7,11,15,19,23,27,31,35" />
 
             <EditTextPreference
                 android:title="Data Sub-Channel Index"
                 android:key="data_index"
-                android:summary="Entering index with spaces."
                 android:defaultValue="16,17,18,20,21,22,24,25,26,28,29,30" />
 
+            <EditTextPreference
+                android:title="Null Sub-Channel Index"
+                android:key="null_index"
+                android:defaultValue="8,9,10,12,13,14,32,33,34,36,37,38" />
 
         </PreferenceScreen>
 

@@ -94,6 +94,22 @@ public class Constellation {
 
             case SixteenQAM:
                 this.constellationSize = 16;
+                bitStringToComplexMapping.put("0010", new Complex(-1.0, 1.0));
+                bitStringToComplexMapping.put("0110", new Complex(-0.333, 1.0));
+                bitStringToComplexMapping.put("1110", new Complex(0.333, 1.0));
+                bitStringToComplexMapping.put("1010", new Complex(1.0, 1.0));
+                bitStringToComplexMapping.put("0011", new Complex(-1.0, 0.333));
+                bitStringToComplexMapping.put("0111", new Complex(-0.333, 0.333));
+                bitStringToComplexMapping.put("1111", new Complex(0.333, 0.333));
+                bitStringToComplexMapping.put("1011", new Complex(1.0, 0.333));
+                bitStringToComplexMapping.put("0001", new Complex(-1.0, -0.333));
+                bitStringToComplexMapping.put("0101", new Complex(-0.333, -0.333));
+                bitStringToComplexMapping.put("1101", new Complex(0.333, -0.333));
+                bitStringToComplexMapping.put("1001", new Complex(1.0, -0.333));
+                bitStringToComplexMapping.put("0000", new Complex(-1.0, -1.0));
+                bitStringToComplexMapping.put("0100", new Complex(-0.333, -1.0));
+                bitStringToComplexMapping.put("1100", new Complex(0.333, -1.0));
+                bitStringToComplexMapping.put("1000", new Complex(1.0, -1.0));
                 break;
 
         }
@@ -144,5 +160,9 @@ public class Constellation {
             }
         }
         return result;
+    }
+
+    public int getConstellationSize() {
+        return constellationSize;
     }
 }

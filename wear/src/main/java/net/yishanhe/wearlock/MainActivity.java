@@ -2,6 +2,10 @@ package net.yishanhe.wearlock;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
@@ -40,7 +44,7 @@ import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 
-public class MainActivity extends WearableActivity {
+public class MainActivity extends WearableActivity implements SensorEventListener {
 
     private final static String TAG = "WearLock_MainActivity";
     private static final int CLIENT_CONNECTION_TIMEOUT = 15000;
@@ -73,6 +77,15 @@ public class MainActivity extends WearableActivity {
 
     private WearCommClient client = null;
     private AudioReader mic = null;
+
+    // added sensor part
+    private SensorManager sensorManager;
+    private static final int[] REQUIRED_SENSOR = {Sensor.TYPE_ACCELEROMETER};
+    private static final int[] SENSOR_RATES = {SensorManager.SENSOR_DELAY_GAME};
+    private long sensorStartTime;
+    private int samplingRateCtrAcc;
+    private boolean showSamplingRateAcc = true;
+    private FileOutputStream fosAcc = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -107,6 +120,8 @@ public class MainActivity extends WearableActivity {
                 || ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, PERMISSIONS, REQUEST_PERMISSIONS);
         }
+
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
 
     }
 
@@ -145,12 +160,14 @@ public class MainActivity extends WearableActivity {
         if (event.getPath().equalsIgnoreCase(START_RECORDING)) {
             if (!mIsRecording) {
                 start();
+                startSensor();
                 EventBus.getDefault().post(new SendMessageEvent(RECORDING_STARTED));
             }
         }
         if (event.getPath().equalsIgnoreCase(STOP_RECORDING)) {
             if (mIsRecording) {
                 stop();
+                stopSensor();
             }
         }
         if (event.getPath().equalsIgnoreCase("/measure_message_delay")) {
@@ -231,7 +248,51 @@ public class MainActivity extends WearableActivity {
         }
     }
 
+    private void startSensor() {
+        for (int i = 0; i < REQUIRED_SENSOR.length; i++) {
+            Sensor sensor = sensorManager.getDefaultSensor(REQUIRED_SENSOR[i]);
+            if (sensor!=null) {
+                Log.d(TAG, "startSensor: registering " + sensor.getName());
+                sensorManager.registerListener(this, sensor, SENSOR_RATES[i]);
+            } else {
+                Log.d(TAG, "startSensor: not found "+sensor.getName());
+            }
+        }
+        if (fosAcc == null) {
+            try {
+                fosAcc = new FileOutputStream(createNewFile("sensor"));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        samplingRateCtrAcc = 0;
+        showSamplingRateAcc = true;
+        sensorStartTime = System.currentTimeMillis();
+        Log.d(TAG, "startSensor: start logging sensor");
+    }
 
+    private void stopSensor() {
+        if (fosAcc!=null) {
+            try {
+                fosAcc.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                fosAcc = null;
+            }
+        }
+        sensorManager.unregisterListener(this);
+        Log.d(TAG, "stopSensor: stop logging sensor");
+    }
+
+    public File createNewFile(String name) {
+        int num = 0;
+        File file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
+        while (file.exists()) {
+            file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
+        }
+        return file;
+    }
     //**************************************************************************
     // Audio processing and IO
     //**************************************************************************
@@ -387,4 +448,32 @@ public class MainActivity extends WearableActivity {
         }
     }
 
+
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            if (showSamplingRateAcc) {
+                samplingRateCtrAcc++;
+                if (samplingRateCtrAcc >= 50) {
+                    long now = System.currentTimeMillis();
+                    showSamplingRateAcc = false;
+                    Log.d(TAG, "onSensorChanged: acc sampling rate "+ samplingRateCtrAcc/ (now-sensorStartTime)/1000.0);
+                }
+            }
+
+            if (fosAcc!=null) {
+                try {
+                    fosAcc.write((event.values[0]+","+event.values[1]+","+event.values[2]+","+event.timestamp+"\n").getBytes());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+    }
 }

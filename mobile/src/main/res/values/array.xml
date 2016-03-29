@@ -15,6 +15,7 @@
         <item>QPSK</item>
         <item>EightQAM</item>
         <item>EightPSK</item>
+        <item>SixteenQAM</item>
     </string-array>
     <string-array name="modulation_entry_values">
         <item>0</item>
@@ -23,6 +24,7 @@
         <item>3</item>
         <item>4</item>
         <item>5</item>
+        <item>6</item>
     </string-array>
     <string-array name="guard_type_entries">
         <item>Zero Padding</item>

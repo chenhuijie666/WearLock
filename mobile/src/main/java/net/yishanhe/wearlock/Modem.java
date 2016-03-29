@@ -21,6 +21,7 @@ import net.yishanhe.wearlock.events.MessageEvent;
 import org.apache.commons.math3.complex.Complex;
 import org.greenrobot.eventbus.EventBus;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -57,7 +58,10 @@ public class Modem {
     private int guardSize;
     private int fftSize;
     private ArrayList<Integer> pilotSubChannelIdx;
+    private ArrayList<Integer> pilot1stHarmonicSubChannelIdx;
     private ArrayList<Integer> dataSubChannelIdx;
+    private ArrayList<Integer> data1stHarmonicSubChannelIdx;
+    private ArrayList<Integer> nullSubChannelIdx;
     private GuardType guardType;
     private ModulationType modulationType;
     private int preambleSize;
@@ -110,13 +114,22 @@ public class Modem {
         this.guardSize = Integer.parseInt(prefs.getString("guard_size","128"));
         String[] pilotIndex = prefs.getString("pilot_index","7,11,15,19,23,27,31,35").split(",");
         this.pilotSubChannelIdx = new ArrayList<>(pilotIndex.length);
+        this.pilot1stHarmonicSubChannelIdx = new ArrayList<>(pilotIndex.length);
         for (int i = 0; i < pilotIndex.length; i++) {
-           pilotSubChannelIdx.add(Integer.valueOf(pilotIndex[i]));
+            pilotSubChannelIdx.add(Integer.valueOf(pilotIndex[i]));
+            pilot1stHarmonicSubChannelIdx.add(2*Integer.valueOf(pilotIndex[i]));
         }
         String[] dataIndex = prefs.getString("data_index","16,17,18,20,21,22,24,25,26,28,29,30").split(",");
         this.dataSubChannelIdx = new ArrayList<>(dataIndex.length);
+        this.data1stHarmonicSubChannelIdx = new ArrayList<>(dataIndex.length);
         for (int i = 0; i < dataIndex.length; i++) {
             dataSubChannelIdx.add(Integer.valueOf(dataIndex[i]));
+            data1stHarmonicSubChannelIdx.add(2*Integer.valueOf(dataIndex[i]));
+        }
+        String[] nullIndex = prefs.getString("null_index","8,9,10,12,13,14,32,33,34,36,37,38").split(",");
+        this.nullSubChannelIdx = new ArrayList<>(nullIndex.length);
+        for (int i = 0; i < nullIndex.length; i++) {
+            nullSubChannelIdx.add(Integer.valueOf(nullIndex[i]));
         }
         int guardTypeIndex = Integer.parseInt(prefs.getString("guard_type","0"));
         this.guardType = GuardType.values()[guardTypeIndex];
@@ -161,9 +174,23 @@ public class Modem {
             System.arraycopy(scaleDoubles(freqProbingFrameIfftBuffer), 0, preambleWithProbing, preambleSize + postPreambleGuardSize, freqProbingFrameIfftBuffer.length);
             preambleInShort = doubleToAudioShort(preambleWithProbing);
 
+            Chunk toFile = new Chunk(preambleWithProbing);
+            try {
+                toFile.dump("/sdcard/WearLock/dumped_preamble_probing.raw");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         } else {
+            Chunk toFile = new Chunk(scaleDoubles(preamble.getPreamble()));
+            try {
+                toFile.dump("/sdcard/WearLock/dumped_preamble_no_probing.raw");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             preambleInShort = doubleToAudioShort(scaleDoubles(preamble.getPreamble()));
         }
+
+
     }
 
     public  void makeModulated(String inputPin) {
@@ -177,6 +204,9 @@ public class Modem {
             }
             if (modulationType == ModulationType.EightPSK || modulationType == ModulationType.EightQAM) {
                 inputPin = "100001010111101110000011100001010111";
+            }
+            if (modulationType == ModulationType.SixteenQAM) {
+                inputPin = "001001111101100010101111010100000001011010111100";
             }
             EventBus.getDefault().post(new MessageEvent(TAG, inputPin, "/fixed_input"));
         }
@@ -241,19 +271,44 @@ public class Modem {
 //        for (int i = 0; i < modulated.length; i++) {
 //           System.out.println("modulated i:"+i+" double: "+modulated[i]);
 //        }
-//        Chunk toDump = new Chunk(modulated);
-//        try {
-//            toDump.dump("/sdcard/dumped.raw");
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
+        Chunk toDump = new Chunk(modulated);
+        try {
+            toDump.dump("/sdcard/WearLock/dumped_modulated.raw");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
         modulatedInShort = doubleToAudioShort(modulated);
-        EventBus.getDefault().post(new MessageEvent(TAG, "Modulated audio track is made.","/UPDATE_STATUS"));
+//        EventBus.getDefault().post(new MessageEvent(TAG, "Modulated audio track is made.","/UPDATE_STATUS"));
 
     }
 
-    public void channelProbing(Chunk whole, int start, int end ) {
+    public void channelProbing(Chunk whole, int start, int end , double minSPL) {
+
+
+        //(minSPL+97) // noise
+        double vol=1.0;
+        double rxSPL = minSPL+97+10;
+
+//        if (rxSPL > 50) {
+//            vol = 1.0;
+//        } else if (rxSPL > 48) {
+//            vol = 0.75;
+//        } else if (rxSPL > 44) {
+//            vol = 0.5;
+//        } else if (rxSPL > 39) {
+//            vol = 0.25;
+//        } else {
+//            vol = 0.1;
+//        }
+//        EventBus.getDefault().post(new MessageEvent(TAG, "Demodulation Pilot SNR estimated: "+String.format("%.4f",vol),"/UPDATE_STATUS"));
+//        this.volume = (int)(vol*VOL_MAXIMUM);
+        // 100 50
+        // 75 48
+        // 50 44
+        // 25 39
+
+
 
         if (isChannelProbingON) {
 
@@ -274,23 +329,51 @@ public class Modem {
             target.skip(preambleSize+postPreambleGuardSize);
             double[] channelProbingFrame = target.getDoubleBuffer(0, fftSize);
             Complex[] fftBuffer = DSPUtils.fft(channelProbingFrame, fftSize);
+            System.out.println("the fft output size: "+fftBuffer.length);
             if (isDebugOutputON) {
-                for (int j = 0; j < fftBuffer.length; j++) {
+
+                double pilotLocalEnergy = 0.0;
+                double noiseLocalEnergy = 0.0;
+                for (int j = 1; j < fftSize/2; j++) {
+                    if (pilotSubChannelIdx.contains(j)) {
+                        pilotLocalEnergy += Math.pow(fftBuffer[j].getImaginary(),2) +  Math.pow(fftBuffer[j].getReal(),2);
+                    } else if (nullSubChannelIdx.contains(j)) {
+                        noiseLocalEnergy += Math.pow(fftBuffer[j].getImaginary(),2) +  Math.pow(fftBuffer[j].getReal(),2);
+                    }
+                }
+                pilotLocalEnergy = pilotLocalEnergy / pilotSubChannelIdx.size();
+                noiseLocalEnergy = noiseLocalEnergy / nullSubChannelIdx.size();
+                double preamblePSNR = 10*Math.log10((pilotLocalEnergy-noiseLocalEnergy)/noiseLocalEnergy);
+                EventBus.getDefault().post(new MessageEvent(TAG, "Preamble Pilot-SNR estimated: "+String.format("%.4f",preamblePSNR),"/UPDATE_STATUS"));
+                EventBus.getDefault().post(new MessageEvent(
+                        TAG,
+                        "Eb/N0 estimated: " + String.format("%.4f",preamblePSNR+10*Math.log10(4.0/(Math.log(constellation.getConstellationSize())/Math.log(2)))),
+                        "/UPDATE_STATUS"));
+
+                channel.setChannelBuffer(fftBuffer);
+                channel.estimate();
+
+                channel.equalize();
+
+                for (int j = 0; j < fftBuffer.length/2; j++) {
+                    if (channel.getDataSubChannelIdx().contains(j)){
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        System.out.println(j+" DATA complex: "+fftBuffer[j].toString()+" amp:"+String.format("%.4f",fftBuffer[j].abs())+" phase angle:"
+                                +String.format("%.2f",phaseAngle*180.0/Math.PI)+" equalized: "+channel.getSubChannelAtIdx(j).getEqualized().toString());
+                    }
                     if (channel.getPilotSubChannelIdx().contains(j)){
                         double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-//                        if (phaseAngle<0) {
-//                            phaseAngle += 2*Math.PI;
-//                        }
-                        System.out.println("Pilot complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
-                    } else{
+                        System.out.println(j+" PILOT complex: "+fftBuffer[j].toString()+" amp:"+String.format("%.4f",fftBuffer[j].abs())+" phase angle:"
+                                +String.format("%.2f",phaseAngle*180.0/Math.PI)+" equalized: "+channel.getSubChannelAtIdx(j).getEqualized().toString());
+                    }
+                    if (nullSubChannelIdx.contains(j)){
                         double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-//                        if (phaseAngle<0) {
-//                            phaseAngle += 2*Math.PI;
-//                        }
-                        System.out.println("Other complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                        System.out.println(j+" NULL complex: "+fftBuffer[j].toString()+" amp:"+String.format("%.4f",fftBuffer[j].abs())+" phase angle:"
+                                +String.format("%.2f",phaseAngle*180.0/Math.PI)+" equalized: "+channel.getSubChannelAtIdx(j).getEqualized().toString());
                     }
 
                 }
+
             }
         }
     }
@@ -315,7 +398,7 @@ public class Modem {
         int delay = Synchronization.preambleTimeSync(preamble.getPreamble(), target.getDoubleBuffer());
 //        int freqDelay = Synchronization.preambleFreqSync(target.getDoubleBuffer(), (Math.abs(delay)+preambleSize+postPreambleGuardSize), fftSize, 2, pilotSubChannelIdx);
 
-        EventBus.getDefault().post(new MessageEvent(TAG, "synchronization needs to skip " + Math.abs(delay) + " samples", "/UPDATE_STATUS"));
+//        EventBus.getDefault().post(new MessageEvent(TAG, "synchronization needs to skip " + Math.abs(delay) + " samples", "/UPDATE_STATUS"));
 
         if (guardType == GuardType.ZP) {
 
@@ -336,6 +419,13 @@ public class Modem {
             target.skip(Math.abs(delay)+preambleSize+postPreambleGuardSize+cpDelay);
         }
 
+        // synchronized:
+        try {
+            target.dump("/sdcard/WearLock/chunk_sychronized_dumped.raw");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         for (int i = 0; i < numberOfFrames; i++) {
 
             target.skip(guardSize);
@@ -348,48 +438,53 @@ public class Modem {
             // can dump to file here.
             Complex[] fftBuffer = DSPUtils.fft(ofdmOneFrame, fftSize);
 
-            if (isDebugOutputON) {
-                for (int j = 0; j < fftBuffer.length; j++) {
-                    if (channel.getDataSubChannelIdx().contains(j)){
-                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-                        if (phaseAngle<0) {
-                            phaseAngle += 2*Math.PI;
-                        }
-                        System.out.println("DATA complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
-                    }
-                    if (channel.getPilotSubChannelIdx().contains(j)){
-                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
-                        if (phaseAngle<0) {
-                            phaseAngle += 2*Math.PI;
-                        }
-                        System.out.println("PILOT complex: "+fftBuffer[j].toString()+" amp:"+fftBuffer[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
-                    }
-                }
-            }
+
+//            double pilotLocalEnergy = 0.0;
+//            double noiseLocalEnergy = 0.0;
+//            for (int j = 1; j < fftSize/2; j++) {
+//                if (pilotSubChannelIdx.contains(j)) {
+//                    pilotLocalEnergy += Math.pow(fftBuffer[j].getImaginary(),2) +  Math.pow(fftBuffer[j].getReal(),2);
+//                } else if (nullSubChannelIdx.contains(j)) {
+//                    noiseLocalEnergy += Math.pow(fftBuffer[j].getImaginary(),2) +  Math.pow(fftBuffer[j].getReal(),2);
+//                }
+//            }
+//            pilotLocalEnergy = pilotLocalEnergy / pilotSubChannelIdx.size();
+//            noiseLocalEnergy = noiseLocalEnergy / nullSubChannelIdx.size();
+//            double demodPilotSNR = 10*Math.log10((pilotLocalEnergy-noiseLocalEnergy)/noiseLocalEnergy);
+//            EventBus.getDefault().post(new MessageEvent(TAG, "Demodulation Pilot SNR estimated: "+String.format("%.4f",demodPilotSNR),"/UPDATE_STATUS"));
+//            EventBus.getDefault().post(new MessageEvent(
+//                    TAG,
+//                    "Eb/N0 estimated: " + String.format("%.4f",demodPilotSNR+10*Math.log10(4.0/(Math.log(constellation.getConstellationSize())/Math.log(2)))),
+//                    "/UPDATE_STATUS"));
+
 
 
             channel.setChannelBuffer(fftBuffer);
             channel.estimate();
-            EventBus.getDefault().post(new MessageEvent(TAG, "Input SNR estimated: "+String.format("%.4f",channel.getInputSNRinDB()),"/UPDATE_STATUS"));
-            EventBus.getDefault().post(new MessageEvent(TAG, "Pilot SNR estimated: "+String.format("%.4f",channel.getPilotSNRinDB()),"/UPDATE_STATUS"));
-            EventBus.getDefault().post(new MessageEvent(
-                    TAG,
-                    "Eb/N0 estimated: " + String.format("%.4f",channel.getInputSNRinDB()
-                            -10*Math.log10(dataSubChannelIdx.size()/(double)(fftSize-pilotSubChannelIdx.size()-dataSubChannelIdx.size()))),
-                    "/UPDATE_STATUS"));
 
-            Complex[] equalized = channel.getEqualized();
+            channel.equalize();
+            Complex[] equalized = channel.getEqualizedData();
 
             if (isDebugOutputON) {
-                System.out.println("Equalized DATA");
-                for (int j = 0; j < equalized.length; j++) {
-                    double phaseAngle = Math.atan2(equalized[j].getImaginary(), equalized[j].getReal());
-                    if (phaseAngle<0) {
-                        phaseAngle += 2*Math.PI;
+                for (int j = 0; j < fftBuffer.length/2; j++) {
+                    if (channel.getDataSubChannelIdx().contains(j)){
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        System.out.println(j+" DATA complex: "+fftBuffer[j].toString()+" amp:"+String.format("%.4f",fftBuffer[j].abs())+" phase angle:"
+                                +String.format("%.2f",phaseAngle*180.0/Math.PI)+" equalized: "+channel.getSubChannelAtIdx(j).getEqualized().toString());
                     }
-                    System.out.println("complex: "+equalized[j].toString()+" amp:"+equalized[j].abs()+" phase angle:"+phaseAngle*180.0/Math.PI);
+                    if (channel.getPilotSubChannelIdx().contains(j)){
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        System.out.println(j+" PILOT complex: "+fftBuffer[j].toString()+" amp:"+String.format("%.4f",fftBuffer[j].abs())+" phase angle:"
+                                +String.format("%.2f",phaseAngle*180.0/Math.PI)+" equalized: "+channel.getSubChannelAtIdx(j).getEqualized().toString());
+                    }
+                    if (nullSubChannelIdx.contains(j)){
+                        double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
+                        System.out.println(j+" NULL complex: "+fftBuffer[j].toString()+" amp:"+String.format("%.4f",fftBuffer[j].abs())+" phase angle:"
+                                +String.format("%.2f",phaseAngle*180.0/Math.PI)+" equalized: "+channel.getSubChannelAtIdx(j).getEqualized().toString());
+                    }
                 }
             }
+
 
             result += constellation.constellationDeMapping(equalized);
 
@@ -448,5 +543,9 @@ public class Modem {
 
     public boolean isExperimentModeON() {
         return isExperimentModeON;
+    }
+
+    public int getConstellationSize() {
+        return constellation.getConstellationSize();
     }
 }
