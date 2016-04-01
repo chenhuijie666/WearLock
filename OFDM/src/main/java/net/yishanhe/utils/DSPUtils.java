@@ -248,6 +248,9 @@ public class DSPUtils {
 
     public static double[] xcorr(double a[], double b[], boolean normalized) {
 
+        // a preamble
+        // b received
+
         if (normalized) {
             // scale to +1 maybe
             double aNorm = vectorNorm(a);

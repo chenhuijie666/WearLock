@@ -37,7 +37,8 @@ public class PhoneServer {
     private static final int RECEIVING_MESSAGE = 0;
     private static final int RECEIVING_FILE = 1;
 
-    private static final String START_RECORDING = "/start_recording";
+    private static final String START_RECORDING_P2 = "/start_recording_p2";
+    private static final String START_RECORDING_P1 = "/start_recording_p1";
     private static final String STOP_RECORDING = "/stop_recording";
     private static final String SEND_RECORDING = "/send_recording";
     private static final String RECORDING_STARTED = "/RECORDING_STARTED";
@@ -139,7 +140,8 @@ public class PhoneServer {
         if (!threadPool.isEmpty()) {
             for (int i = 0; i < threadPool.size(); i++) {
                 try {
-                    byte[] buffer = new byte[threadPool.get(i).client.getSendBufferSize()];
+//                    byte[] buffer = new byte[threadPool.get(i).client.getSendBufferSize()];
+                    byte[] buffer = new byte[8194];
                     File toSend = new File(event.getUri().getPath());
                     BufferedInputStream in = new BufferedInputStream(new FileInputStream(toSend));
                     long fileSize = toSend.length();
@@ -147,12 +149,19 @@ public class PhoneServer {
                     int bytesRead = 0;
                     threadPool.get(i).output.write(("/FILE"+fileSize+"\r\n").getBytes());
 
-                    while ( bytesRead<fileSize && (read = in.read(buffer, 0, Math.min(buffer.length, ((int)fileSize-bytesRead))))!=-1) {
+//                    while ( bytesRead<fileSize && (read = in.read(buffer, 0, Math.min(buffer.length, ((int)fileSize-bytesRead))))!=-1) {
+//                        threadPool.get(i).output.write(buffer, 0, read);
+//                        bytesRead += read;
+//                        Log.d(TAG, "sendFile: read "+read+", sent/full"+bytesRead+"/"+fileSize);
+//                        threadPool.get(i).output.flush();
+//                    }
+                    while ( (read = in.read(buffer))!=-1) {
                         threadPool.get(i).output.write(buffer, 0, read);
                         bytesRead += read;
+//                        Log.d(TAG, "sendFile: read "+read+", sent/full"+bytesRead+"/"+fileSize);
                         Log.d(TAG, "sendFile: read "+read+", sent/full"+bytesRead+"/"+fileSize);
-                        threadPool.get(i).output.flush();
                     }
+                    threadPool.get(i).output.flush();
                     in.close();
                     Log.d(TAG, "sendFile: file sent.");
 

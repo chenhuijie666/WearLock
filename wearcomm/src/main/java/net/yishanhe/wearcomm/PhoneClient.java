@@ -36,6 +36,7 @@ public class PhoneClient {
     private OutputStream outputStream = null;
     private Thread thread;
     public int status;
+    private boolean isblocking = false;
 
     private boolean connected = false;
 
@@ -53,7 +54,7 @@ public class PhoneClient {
     }
 
     public void disconnect() {
-        if (connected) {
+        if (connected && outputStream!=null) {
             try {
                 Log.d(TAG, "disconnect: sent out /QUIT");
                 outputStream.write("/QUIT\r\n".getBytes());
@@ -98,26 +99,32 @@ public class PhoneClient {
                     }
                     if (line.contains("/FILE")) {
                         status = RECEIVING_MESSAGE;
-                        Log.d(TAG, "run: receive file");
+                        long fileReceiveStartTime = System.currentTimeMillis();
                         long fileSize = Integer.valueOf(line.substring(line.indexOf("/FILE")+5));
 //                        bufferedReader.close();
 //                        BufferedInputStream bis = new BufferedInputStream(socket.getInputStream());
                         File file = new File("/sdcard/WearLock/tmp.raw");
-                        byte[] buffer = new byte[socket.getReceiveBufferSize()];
+                        byte[] buffer = new byte[8194];
                         FileOutputStream fos = new FileOutputStream(file);
                         int read;
                         int bytesRead = 0;
+                        long remaining = fileSize;
 
-                        while (bytesRead<fileSize &&(read = inputStream.read(buffer, 0, Math.min(buffer.length,((int)fileSize-bytesRead)))) != -1) {
+                        while ( (read = inputStream.read(buffer, 0, Math.min(buffer.length, (int)remaining)))>0 ) {
+                            isblocking = true;
                             fos.write(buffer, 0, read);
+                            fos.flush();
                             bytesRead += read;
-                            Log.d(TAG, "sendFile: read "+read+", sent/full "+bytesRead+"/"+fileSize);
+                            remaining -= read;
+                            Log.d(TAG, "sendFile: read "+read+", read/full "+bytesRead+"/"+fileSize);
+
                         }
+                        isblocking = false;
                         fos.close();
 //                        bufferedReader.close();
 //                        bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                         // post
-                        Log.d(TAG, "run: file received");
+                        Log.d(TAG, "[DELAY] file transfer time cost:"+(System.currentTimeMillis()-fileReceiveStartTime));
                         EventBus.getDefault().post(new FileReceivedEvent(null));
                     }
                 }
@@ -133,10 +140,16 @@ public class PhoneClient {
     public void sendMessage(SendMessageEvent event) {
         try {
             if (outputStream !=null) {
-                outputStream.write( ("/MESSAGE"+event.getPath()+"\r\n"+(new String(event.getData()))+"\r\n").getBytes());
+                if (!isblocking) {
+                    outputStream.write(("/MESSAGE" + event.getPath() + "\r\n" + (new String(event.getData())) + "\r\n").getBytes());
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public boolean isblocking() {
+        return isblocking;
     }
 }

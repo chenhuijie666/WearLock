@@ -5,6 +5,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.media.MediaPlayer;
@@ -25,10 +29,15 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.ImageView;
+import android.widget.Toast;
 
+import com.dtw.TimeWarpInfo;
 import com.github.clans.fab.FloatingActionButton;
 import com.github.clans.fab.FloatingActionMenu;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.timeseries.TimeSeries;
+import com.util.DistanceFunction;
+import com.util.DistanceFunctionFactory;
 
 import net.yishanhe.ofdm.Chunk;
 import net.yishanhe.utils.IOUtils;
@@ -45,6 +54,7 @@ import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -54,19 +64,21 @@ import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 
-public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks , AudioTrack.OnPlaybackPositionUpdateListener {
+public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks , AudioTrack.OnPlaybackPositionUpdateListener, SensorEventListener{
 
     private static final String TAG = "MainActivity";
 
     private static final String START_ACTIVITY = "/start_activity";
+    private static final String START_RECORDING_P1 = "/start_recording_p1";
+    private static final String START_RECORDING_P2 = "/start_recording_p2";
     private static final String STOP_ACTIVITY = "/stop_activity";
-    private static final String START_RECORDING = "/start_recording";
+//    private static final String START_RECORDING = "/start_recording";
     private static final String RECORDING_STARTED = "/RECORDING_STARTED";
     private static final String STOP_RECORDING = "/stop_recording";
     private static final String SEND_RECORDING = "/send_recording";
     private File rec;
     private File audioFolder;
-    private File logFile; // @TODO: put result in log file
+    private File sensor; // @TODO: put result in log file
     private File folder;
     private String inputPin = "";
     private static final int REQUEST_WRITE_STORAGE = 112;
@@ -79,7 +91,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     private int state;
 
     private long messageSentTime;
-    private long fileSentTime;
+    private long fileSentTime = 0;
 
     // client-server communication
     private SharedPreferences prefs;
@@ -92,6 +104,22 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
     private double cumSPL = 0.0;
     private int cumSPLCtr = 0;
+
+
+    // added sensor part
+    private  boolean enableSensor = true;
+    private SensorManager sensorManager;
+    private static final int[] REQUIRED_SENSOR = {Sensor.TYPE_LINEAR_ACCELERATION};
+    private static final int[] SENSOR_RATES = {SensorManager.SENSOR_DELAY_FASTEST};
+    private long sensorStartTime;
+    private int samplingRateCtrAcc;
+    private boolean showSamplingRateAcc = true;
+    private FileOutputStream fosAcc = null;
+    private boolean isTracking = false;
+
+
+    // DTW
+    final DistanceFunction distFn= DistanceFunctionFactory.getDistFnByName("EuclideanDistance");
 
 
     // BINDING Bufferknife
@@ -142,8 +170,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Bind(R.id.fab_probing_beep) FloatingActionButton fabProbingBeep;
     @OnClick(R.id.fab_probing_beep)
     public void sendProbingBeep() {
+        Log.d(TAG, "sendProbingBeep: start time:"+System.currentTimeMillis());
         state = REMOTE_PREAMBLE;
-        EventBus.getDefault().post(new SendMessageEvent(START_RECORDING));
+        EventBus.getDefault().post(new SendMessageEvent(START_RECORDING_P1));
         fab.toggle(true);
 
     }
@@ -151,8 +180,15 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Bind(R.id.fab_modulated_beep) FloatingActionButton fabModulatedBeep;
     @OnClick(R.id.fab_modulated_beep)
     public void sendModulatedBeep() {
+        Log.d(TAG, "sendModulatedBeep: start time:"+System.currentTimeMillis());
         state = REMOTE_MODULATED;
-        EventBus.getDefault().post(new SendMessageEvent(START_RECORDING));
+        EventBus.getDefault().post(new SendMessageEvent(START_RECORDING_P2));
+        if (enableSensor) {
+            if (!isTracking) {
+                isTracking = true;
+                startSensor();
+            }
+        }
         fab.toggle(true);
     }
 
@@ -334,6 +370,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         });
 
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
     }
 
     @Override
@@ -358,12 +395,31 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             case REMOTE_PREAMBLE:
             case REMOTE_MODULATED:
                 // post delay
-                handler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        EventBus.getDefault().post(new SendMessageEvent(STOP_RECORDING));
-                    }
-                }, 250);
+                if (!enableSensor) {
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            EventBus.getDefault().post(new SendMessageEvent(STOP_RECORDING));
+                        }
+                    }, 150);
+                } else {
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            EventBus.getDefault().post(new SendMessageEvent(STOP_RECORDING));
+                        }
+                    }, 1000);
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (enableSensor) {
+                                if (isTracking) {
+                                    stopSensor();
+                                }
+                            }
+                        }
+                    },1500);
+                }
                 break;
         }
     }
@@ -447,19 +503,29 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
             String filename = sdf.format(filedate);
             try {
-                if (state == REMOTE_MODULATED) {
-                    filename = sdf.format(filedate)+"-modulated"+".raw";
-                } else if (state == REMOTE_PREAMBLE) {
-                    filename = sdf.format(filedate)+"-preamble"+".raw";
+                if (!enableSensor) {
+                    if (state == REMOTE_MODULATED) {
+                        filename = sdf.format(filedate) + "-modulated" + ".raw";
+                    } else if (state == REMOTE_PREAMBLE) {
+                        filename = sdf.format(filedate) + "-preamble" + ".raw";
+                    } else {
+                        filename = sdf.format(filedate) + "-recording" + ".raw";
+                    }
+
+                    // create file
+                    rec = new File(audioFolder,filename);
+                    if (!rec.exists()) {
+                        rec.createNewFile();
+                    }
+
                 } else {
-                    filename = sdf.format(filedate)+"-recording"+".raw";
+                    filename = "sensor_watch.txt";
+                    rec = new File(folder,filename);
+                    if (!rec.exists()) {
+                        rec.createNewFile();
+                    }
                 }
 
-                // create file
-                rec = new File(audioFolder,filename);
-                if (!rec.exists()) {
-                    rec.createNewFile();
-                }
 
                 // receive file
                 // if use fake wear, this event will not be triggered, so this calling is safe.
@@ -475,159 +541,200 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     
     @Subscribe(threadMode = ThreadMode.BACKGROUND)
     public void onFileReceivedEvent(FileReceivedEvent event) {
-        Log.d(TAG, "onFileReceivedEvent: file received. time cost:"+(System.currentTimeMillis()-fileSentTime)+"ms");
+        if (!enableSensor) {
+            if (fileSentTime != 0) {
+                Log.d(TAG, "[DELAY] file transfer time cost:" + (System.currentTimeMillis() - fileSentTime) + "ms");
+            }
 
-        Chunk chunk = null;
+            long processingBegin = System.currentTimeMillis();
 
-        if (useFakeWear) {
-            chunk = new Chunk(true, IOUtils.loadFromFile(new File("/sdcard/WearLock/tmp.raw"))); // we fix file name in this case.
-        } else {
-            chunk = new Chunk(true, IOUtils.loadFromFile(rec)); // true big endian
-        }
-        double[] input = chunk.getDoubleBuffer();
+            Chunk chunk = null;
 
-        EventBus.getDefault().post(new MessageEvent(TAG, "load "+input.length+" samples."));
-
-        SlidingWindow sw = new SlidingWindow(4096, 2048, input);
-
-        SilenceDetector sd = new SilenceDetector(-70.0);
-
-        boolean isClipStart = false;
-        ArrayList<Integer> startIndexArray = new ArrayList<>();
-        ArrayList<Integer> endIndexArray = new ArrayList<>();
-
-        int maxStartIdx = 0;
-        int maxEndIdx = 0;
-        double maxSPL = -1000.0;
-        double minSPL = 1000.0;
-        double CNR;
-
-        while (sw.hasNext()) {
-
-            double[] chunkData = sw.next();
-
-            if (sd.isSilence(chunkData)) {
-                // silent do nothing.
-                if (isClipStart) {
-                    isClipStart = false;
-                    endIndexArray.add(sw.getStart());
-                }
+            if (useFakeWear) {
+                chunk = new Chunk(true, IOUtils.loadFromFile(new File("/sdcard/WearLock/tmp.raw"))); // we fix file name in this case.
             } else {
-                // detected sound
-                if (!isClipStart) {
-                    isClipStart = true;
-                    startIndexArray.add(sw.getStart());
+                chunk = new Chunk(true, IOUtils.loadFromFile(rec)); // true big endian
+            }
+            double[] input = chunk.getDoubleBuffer();
+
+            EventBus.getDefault().post(new MessageEvent(TAG, "load " + input.length + " samples."));
+
+            SlidingWindow sw = new SlidingWindow(4096, 2048, input);
+
+            SilenceDetector sd = new SilenceDetector(-70.0);
+
+            boolean isClipStart = false;
+            ArrayList<Integer> startIndexArray = new ArrayList<>();
+            ArrayList<Integer> endIndexArray = new ArrayList<>();
+
+            int maxStartIdx = 0;
+            int maxEndIdx = 0;
+            double maxSPL = -1000.0;
+            double minSPL = 1000.0;
+            double CNR;
+
+            while (sw.hasNext()) {
+
+                double[] chunkData = sw.next();
+
+                if (sd.isSilence(chunkData)) {
+                    // silent do nothing.
+                    if (isClipStart) {
+                        isClipStart = false;
+                        endIndexArray.add(sw.getStart());
+                    }
+                } else {
+                    // detected sound
+                    if (!isClipStart) {
+                        isClipStart = true;
+                        startIndexArray.add(sw.getStart());
+                    }
                 }
-            }
 
-            // get minSPL:
-            if (sd.getCurrentSPL() < minSPL) {
-                minSPL = sd.getCurrentSPL();
-            }
+                // get minSPL:
+                if (sd.getCurrentSPL() < minSPL) {
+                    minSPL = sd.getCurrentSPL();
+                }
 
-            // get maxSPL
-            if (sd.getCurrentSPL() > maxSPL ) {
-                maxSPL = sd.getCurrentSPL();
-                System.out.println("maxSPD updated. " + maxSPL);
-                maxStartIdx = Math.max(sw.getStart(),0);
-                maxEndIdx = Math.min(sw.getEnd(),chunk.getDoubleBuffer().length);
-            }
+                // get maxSPL
+                if (sd.getCurrentSPL() > maxSPL) {
+                    maxSPL = sd.getCurrentSPL();
+                    System.out.println("maxSPD updated. " + maxSPL);
+                    maxStartIdx = Math.max(sw.getStart(), 0);
+                    maxEndIdx = Math.min(sw.getEnd(), chunk.getDoubleBuffer().length);
+                }
 
-        }
-        CNR = maxSPL - minSPL;
+            }
+            CNR = maxSPL - minSPL;
 //        cumSPL += maxSPL;
 //        cumSPLCtr += 1;
-        Log.d(TAG, "onFileReceivedEvent: rough estimate of CNR:"+CNR);
-        EventBus.getDefault().post(new MessageEvent(TAG, "maxSPL:"+String.format("%.4f",maxSPL+94.0)
-                + ", minSPL:"+String.format("%.4f",minSPL+94.0)
+            Log.d(TAG, "onFileReceivedEvent: rough estimate of CNR:" + CNR);
+            EventBus.getDefault().post(new MessageEvent(TAG, "maxSPL:" + String.format("%.4f", maxSPL + 94.0)
+                    + ", minSPL:" + String.format("%.4f", minSPL + 94.0)
 //                +", cum SPL:"+String.format("%.4f", cumSPL/(double)cumSPLCtr)
-                +", Peak SNR:"+String.format("%.4f",CNR),"/UPDATE_STATUS"));
+                    + ", Peak SNR:" + String.format("%.4f", CNR), "/UPDATE_STATUS"));
 
-        EventBus.getDefault().post(new MessageEvent(
-                TAG,
-                "Eb/N0 estimated: " + String.format("%.4f",CNR+10*Math.log10(4.0/(Math.log(modem.getConstellationSize())/Math.log(2)))),
-                "/UPDATE_STATUS"));
-
-
-        if (isClipStart) {
-            isClipStart = false;
-            endIndexArray.add(chunk.getDoubleBuffer().length);
-        }
+            EventBus.getDefault().post(new MessageEvent(
+                    TAG,
+                    "Eb/N0 estimated: " + String.format("%.4f", CNR + 10 * Math.log10(4.0 / (Math.log(modem.getConstellationSize()) / Math.log(2)))),
+                    "/UPDATE_STATUS"));
 
 
-        if (startIndexArray.size() !=  endIndexArray.size()) {
-            throw new IllegalArgumentException("chunk start and end size mismatch.");
-        }
-
-        // fall back to max SPL chunk to run preamble detection.
-        if (startIndexArray.size() == 0) {
-//            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx,"/UPDATE_STATUS"));
-            startIndexArray.add(maxStartIdx);
-            endIndexArray.add(maxEndIdx);
-
-        }
-
-        int maxIndex = 0;
-        double maxXcorrVal = 0.0;
-        for (int i = 0; i < startIndexArray.size(); i++) {
-            int start =  startIndexArray.get(i);
-            int end = endIndexArray.get(i);
-            Log.d(TAG, "onFileReceivedEvent: check chunk start:"+start+"end:"+end);
-            double[] candidate = chunk.getDoubleBuffer(start,end);
-            double xcorrVal = modem.detectPreamble(candidate);
-            if (xcorrVal > maxXcorrVal) {
-                maxXcorrVal = xcorrVal;
-                maxIndex = i;
+            if (isClipStart) {
+                isClipStart = false;
+                endIndexArray.add(chunk.getDoubleBuffer().length);
             }
-        }
 
-        // dump
 
-        Chunk toDump = chunk.getSubChunk(startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
-        try {
-            toDump.dump("/sdcard/WearLock/chunk_dumped.raw");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+            if (startIndexArray.size() != endIndexArray.size()) {
+                throw new IllegalArgumentException("chunk start and end size mismatch.");
+            }
 
-        EventBus.getDefault().post(new MessageEvent(TAG, "preamble:  "+ String.format("%.4f",maxXcorrVal),"/UPDATE_STATUS"));
+            // fall back to max SPL chunk to run preamble detection.
+            if (startIndexArray.size() == 0) {
+//            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx,"/UPDATE_STATUS"));
+                startIndexArray.add(maxStartIdx);
+                endIndexArray.add(maxEndIdx);
 
-        if (maxXcorrVal < 0.05) {
-            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble signal too bad abort task.","/UPDATE_STATUS"));
-            return;
-        }
+            }
 
-        switch (state) {
+            int maxIndex = 0;
+            double maxXcorrVal = 0.0;
+            for (int i = 0; i < startIndexArray.size(); i++) {
+                int start = startIndexArray.get(i);
+                int end = endIndexArray.get(i);
+                Log.d(TAG, "onFileReceivedEvent: check chunk start:" + start + "end:" + end);
+                double[] candidate = chunk.getDoubleBuffer(start, end);
+                double xcorrVal = modem.detectPreamble(candidate);
+                if (xcorrVal > maxXcorrVal) {
+                    maxXcorrVal = xcorrVal;
+                    maxIndex = i;
+                }
+            }
 
-            case REMOTE_PREAMBLE:
-                // replay to send to chose modulation.
-                modem.channelProbing(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex), minSPL);
-                //(minSPL+97) // noise
 
-                // 100 50
-                // 75 48
-                // 50 44
-                // 25 39
-                // 10 26
+            if (modem.isDumpModeON()) {
+                Chunk toDump = chunk.getSubChunk(startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
+                try {
+                    toDump.dump("/sdcard/WearLock/chunk_dumped.raw");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            EventBus.getDefault().post(new MessageEvent(TAG, "preamble:  " + String.format("%.4f", maxXcorrVal), "/UPDATE_STATUS"));
+
+//        if (maxXcorrVal < 0.05) {
+//            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble signal too bad abort task.","/UPDATE_STATUS"));
+//            return;
+//        }
+
+            long windowingEnd = System.currentTimeMillis();
+            Log.d(TAG, "[DELAY] Windowing Xcorr:" + (windowingEnd - processingBegin));
+
+            switch (state) {
+
+                case REMOTE_PREAMBLE:
+                    // replay to send to chose modulation.
+                    modem.channelProbing(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex), minSPL);
+                    //(minSPL+97) // noise
+
+                    // 100 50
+                    // 75 48
+                    // 50 44
+                    // 25 39
+                    // 10 26
 //                state = REMOTE_MODULATED;
 //                EventBus.getDefault().post(new SendMessageEvent(START_RECORDING));
-                break;
+                    break;
 
-            case REMOTE_MODULATED:
+                case REMOTE_MODULATED:
 
-                String demodulated = modem.deModulate(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
-                // call demodulate
-                EventBus.getDefault().post(new MessageEvent(TAG, demodulated,"/demodulated_result"));
-                break;
+                    String demodulated = modem.deModulate(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
+                    // call demodulate
+                    EventBus.getDefault().post(new MessageEvent(TAG, demodulated, "/demodulated_result"));
+                    break;
 
-            default:
-                break;
+                default:
+                    break;
+
+            }
+
+            long processingEnd = System.currentTimeMillis();
+            if (state == REMOTE_MODULATED) {
+                Log.d(TAG, "[DELAY]: Demodulation:" + (processingEnd - windowingEnd) + ", Phase 2 Total:" + (processingEnd - processingBegin));
+            } else if (state == REMOTE_PREAMBLE) {
+                Log.d(TAG, "[DELAY]: Channel Probing:" + (processingEnd - windowingEnd) + ", Phase 1 Total:" + (processingEnd - processingBegin));
+            }
+
+        } else {
+            // processing sensor data
+
+            // read time series.
+            TimeSeries phone = new TimeSeries((folder+"/sensor_phone.txt"),new int[]{0},false,false,',');
+
+            for (int i = 0; i < 5; i++) {
+                phone.removeFirst();
+            }
+
+            long dtw_starttime = System.currentTimeMillis();
+            TimeSeries watch = new TimeSeries((folder+"/sensor_watch.txt"),new int[]{0},false,false,',');
+            for (int i = 0; i < 5; i++) {
+                watch.removeFirst();
+            }
+            for (int i = 0; i < 10; i++) {
+                phone.removeLast();
+                watch.removeLast();
+            }
+
+
+            phone.normalize();
+            watch.normalize();
+            TimeWarpInfo info = com.dtw.FastDTW.getWarpInfoBetween(phone, watch,0 , distFn );
+//            String.format("%.4f", info.getDistance()) + " "
+            EventBus.getDefault().post(new MessageEvent(TAG, "dtw score: " +  String.format("%.4f", info.getDistance())+", time cost:"+(System.currentTimeMillis()-dtw_starttime), "/UPDATE_STATUS"));
 
         }
-
-
-
-
     }
 
 
@@ -646,4 +753,78 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     }
 
 
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
+            if (showSamplingRateAcc) {
+                samplingRateCtrAcc++;
+                if (samplingRateCtrAcc >= 50) {
+                    long now = System.currentTimeMillis();
+                    showSamplingRateAcc = false;
+                    Log.d(TAG, "onSensorChanged: acc sampling rate "+ (double)samplingRateCtrAcc/ ((double)(now-sensorStartTime)/1000.0) );
+                }
+            }
+
+            if (fosAcc!=null) {
+                try {
+                    fosAcc.write(( Math.sqrt(Math.pow(event.values[0],2)+Math.pow(event.values[1],2)+Math.pow(event.values[2],2)) +","+event.timestamp+"\n").getBytes());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+    }
+
+    private void startSensor() {
+        for (int i = 0; i < REQUIRED_SENSOR.length; i++) {
+            Sensor sensor = sensorManager.getDefaultSensor(REQUIRED_SENSOR[i]);
+            if (sensor!=null) {
+                Log.d(TAG, "startSensor: registering " + sensor.getName());
+                sensorManager.registerListener(this, sensor, SENSOR_RATES[i]);
+            } else {
+                Log.d(TAG, "startSensor: not found "+sensor.getName());
+            }
+        }
+        if (fosAcc == null) {
+            try {
+                String filename = "sensor_phone.txt";
+                sensor = new File(folder,filename);
+                fosAcc = new FileOutputStream(sensor,false);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        samplingRateCtrAcc = 0;
+        showSamplingRateAcc = true;
+        sensorStartTime = System.currentTimeMillis();
+        Log.d(TAG, "startSensor: start logging sensor");
+    }
+
+    private void stopSensor() {
+        if (fosAcc!=null) {
+            try {
+                fosAcc.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                fosAcc = null;
+            }
+        }
+        sensorManager.unregisterListener(this);
+        Log.d(TAG, "stopSensor: stop logging sensor");
+    }
+
+//    public File createNewFile(String name) {
+//        int num = 0;
+//        File file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
+//        while (file.exists()) {
+//            file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
+//        }
+//        return file;
+//    }
 }

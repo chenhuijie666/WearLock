@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="sample_rate_entries">
+        <item>44.1 kHz</item>
+        <item>48.0 kHz</item>
+    </string-array>
+    <string-array name="sample_rate_entry_values">
+        <item>44100</item>
+        <item>48000</item>
+    </string-array>
+    <string-array name="modulation_entries">
+        <item>BASK</item>
+        <item>BPSK</item>
+        <item>QASK</item>
+        <item>QPSK</item>
+        <item>EightQAM</item>
+        <item>EightPSK</item>
+        <item>SixteenQAM</item>
+    </string-array>
+    <string-array name="modulation_entry_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+    </string-array>
+    <string-array name="guard_type_entries">
+        <item>Zero Padding</item>
+        <item>Cyclic Prefix</item>
+    </string-array>
+    <string-array name="guard_type_entry_values">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
+
+    <string-array name="pilot_entries">
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="pilot_entry_values">
+        <item>If the phone rings</item>
+        <item>While traveling</item>
+        <item>While charging</item>
+        <item>Periodically checks</item>
+    </string-array>
+    <string-array name="pilot_default_values">
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+
+</resources>

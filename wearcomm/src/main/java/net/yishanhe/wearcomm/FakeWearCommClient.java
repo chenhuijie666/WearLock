@@ -85,7 +85,7 @@ public class FakeWearCommClient {
     public void sendMessage(SendMessageEvent event){
         Log.d(TAG, "sendMessage: received sending message request.");
         if (identifier == CLIENT) {
-            if (client != null) {
+            if (client != null && !client.isblocking()) {
                 client.sendMessage(event);
             } else {
                 Log.d(TAG, "sendMessage: not send due to null client");

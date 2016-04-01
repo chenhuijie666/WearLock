@@ -22,6 +22,8 @@ import android.view.View;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
+import net.yishanhe.ofdm.Chunk;
+import net.yishanhe.utils.IOUtils;
 import net.yishanhe.wearcomm.WearCommClient;
 import net.yishanhe.wearcomm.events.ReceiveMessageEvent;
 import net.yishanhe.wearcomm.events.SendFileEvent;
@@ -39,10 +41,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
+
 import android.Manifest;
 import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
+
+// @TODO: sliding to left to go to setting activity.
 
 public class MainActivity extends WearableActivity implements SensorEventListener {
 
@@ -65,7 +71,8 @@ public class MainActivity extends WearableActivity implements SensorEventListene
     private final static int SAMPLE_RATE = 44100;
 
     // Msg path
-    private static final String START_RECORDING = "/start_recording";
+    private static final String START_RECORDING_P1 = "/start_recording_p1";
+    private static final String START_RECORDING_P2 = "/start_recording_p2";
     private static final String STOP_RECORDING = "/stop_recording";
     private static final String SEND_RECORDING = "/send_recording";
     private static final String RECORDING_STARTED = "/RECORDING_STARTED";
@@ -80,12 +87,23 @@ public class MainActivity extends WearableActivity implements SensorEventListene
 
     // added sensor part
     private SensorManager sensorManager;
-    private static final int[] REQUIRED_SENSOR = {Sensor.TYPE_ACCELEROMETER};
-    private static final int[] SENSOR_RATES = {SensorManager.SENSOR_DELAY_GAME};
+    private static final int[] REQUIRED_SENSOR = {Sensor.TYPE_LINEAR_ACCELERATION};
+    private static final int[] SENSOR_RATES = {SensorManager.SENSOR_DELAY_FASTEST};
     private long sensorStartTime;
     private int samplingRateCtrAcc;
     private boolean showSamplingRateAcc = true;
     private FileOutputStream fosAcc = null;
+
+    private boolean enableSensor = true;
+    private Modem modem = null;
+
+    private boolean localProcessing = false;
+
+    private static final int LOCAL = 0;
+    private static final int REMOTE_PREAMBLE = 1;
+    private static final int REMOTE_MODULATED = 2;
+    private int state;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -123,6 +141,23 @@ public class MainActivity extends WearableActivity implements SensorEventListene
 
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
 
+
+//        if (localProcessing) {
+//            // MODEM
+//            // prepare Modem
+        modem = Modem.getInstance(this);
+
+
+        if (modem != null) {
+            modem.LoadParameter();
+            modem.prepare();
+
+            modem.makePreamble();
+            modem.makeModulated();
+        }
+//        }
+
+        clearLogs();
     }
 
 
@@ -145,10 +180,21 @@ public class MainActivity extends WearableActivity implements SensorEventListene
         Log.d(TAG, "onRecordingBtnPressed");
         if (!mIsRecording) {
             // start recording
-            start();
+            state = LOCAL;
+
+            if (enableSensor) {
+                startSensor();
+            } else {
+                start();
+            }
         } else {
             // stop recording
-            stop();
+
+            if (enableSensor) {
+                stopSensor();
+            } else {
+                stop();
+            }
         }
     }
 
@@ -157,17 +203,30 @@ public class MainActivity extends WearableActivity implements SensorEventListene
         if (event.getPath().equalsIgnoreCase(STOP_ACTIVITY)) {
             this.finish();
         }
-        if (event.getPath().equalsIgnoreCase(START_RECORDING)) {
+        if (event.getPath().equalsIgnoreCase(START_RECORDING_P1)||event.getPath().equalsIgnoreCase(START_RECORDING_P2)) {
+            if (event.getPath().equalsIgnoreCase(START_RECORDING_P1)) {
+                state = REMOTE_PREAMBLE;
+            } else {
+                state = REMOTE_MODULATED;
+            }
             if (!mIsRecording) {
-                start();
-                startSensor();
+
+                if (enableSensor) {
+                    startSensor();
+                } else {
+                    start();
+                }
                 EventBus.getDefault().post(new SendMessageEvent(RECORDING_STARTED));
             }
         }
         if (event.getPath().equalsIgnoreCase(STOP_RECORDING)) {
             if (mIsRecording) {
-                stop();
-                stopSensor();
+
+                if (enableSensor) {
+                    stopSensor();
+                } else {
+                    stop();
+                }
             }
         }
         if (event.getPath().equalsIgnoreCase("/measure_message_delay")) {
@@ -260,7 +319,8 @@ public class MainActivity extends WearableActivity implements SensorEventListene
         }
         if (fosAcc == null) {
             try {
-                fosAcc = new FileOutputStream(createNewFile("sensor"));
+                mRecording = new File(folder, "wearloc.sensor");
+                fosAcc = new FileOutputStream(mRecording,false);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -269,6 +329,8 @@ public class MainActivity extends WearableActivity implements SensorEventListene
         showSamplingRateAcc = true;
         sensorStartTime = System.currentTimeMillis();
         Log.d(TAG, "startSensor: start logging sensor");
+        mImageButton.setBackgroundResource(R.drawable.round_button_pressed);
+        mIsRecording = true;
     }
 
     private void stopSensor() {
@@ -282,17 +344,24 @@ public class MainActivity extends WearableActivity implements SensorEventListene
             }
         }
         sensorManager.unregisterListener(this);
+        Toast.makeText(this, "Sensor recorded.", Toast.LENGTH_SHORT).show();
+        mIsRecording = false;
+        mImageButton.setBackgroundResource(R.drawable.round_button);
         Log.d(TAG, "stopSensor: stop logging sensor");
+
+        Log.d(TAG, "send recorded raw file");
+        EventBus.getDefault().post(new SendFileEvent(SEND_RECORDING, Uri.fromFile(mRecording)));
+
     }
 
-    public File createNewFile(String name) {
-        int num = 0;
-        File file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
-        while (file.exists()) {
-            file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
-        }
-        return file;
-    }
+//    public File createNewFile(String name) {
+//        int num = 0;
+//        File file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
+//        while (file.exists()) {
+//            file = new File(folder.toString(),String.valueOf(num++)+"_"+name+".txt");
+//        }
+//        return file;
+//    }
     //**************************************************************************
     // Audio processing and IO
     //**************************************************************************
@@ -355,6 +424,123 @@ public class MainActivity extends WearableActivity implements SensorEventListene
 //        Log.d(TAG, "send recorded wav file");
         Log.d(TAG, "send recorded raw file");
         EventBus.getDefault().post(new SendFileEvent(SEND_RECORDING, Uri.fromFile(mRecording)));
+
+
+
+        if (localProcessing) {
+
+            Chunk chunk = new Chunk(true, IOUtils.loadFromFile(mRecording));
+            double[] input = chunk.getDoubleBuffer();
+
+            long processingBegin = System.currentTimeMillis();
+
+            SlidingWindow sw = new SlidingWindow(4096, 2048, input);
+
+            SilenceDetector sd = new SilenceDetector(-70.0);
+
+            boolean isClipStart = false;
+            ArrayList<Integer> startIndexArray = new ArrayList<>();
+            ArrayList<Integer> endIndexArray = new ArrayList<>();
+
+            int maxStartIdx = 0;
+            int maxEndIdx = 0;
+            double maxSPL = -1000.0;
+            double minSPL = 1000.0;
+            double CNR;
+
+            while (sw.hasNext()) {
+
+                double[] chunkData = sw.next();
+
+                if (sd.isSilence(chunkData)) {
+                    // silent do nothing.
+                    if (isClipStart) {
+                        isClipStart = false;
+                        endIndexArray.add(sw.getStart());
+                    }
+                } else {
+                    // detected sound
+                    if (!isClipStart) {
+                        isClipStart = true;
+                        startIndexArray.add(sw.getStart());
+                    }
+                }
+
+                // get minSPL:
+                if (sd.getCurrentSPL() < minSPL) {
+                    minSPL = sd.getCurrentSPL();
+                }
+
+                // get maxSPL
+                if (sd.getCurrentSPL() > maxSPL) {
+                    maxSPL = sd.getCurrentSPL();
+                    System.out.println("maxSPD updated. " + maxSPL);
+                    maxStartIdx = Math.max(sw.getStart(), 0);
+                    maxEndIdx = Math.min(sw.getEnd(), chunk.getDoubleBuffer().length);
+                }
+
+            }
+            CNR = maxSPL - minSPL;
+
+
+            if (isClipStart) {
+                isClipStart = false;
+                endIndexArray.add(chunk.getDoubleBuffer().length);
+            }
+
+
+            if (startIndexArray.size() != endIndexArray.size()) {
+                throw new IllegalArgumentException("chunk start and end size mismatch.");
+            }
+
+            // fall back to max SPL chunk to run preamble detection.
+            if (startIndexArray.size() == 0) {
+//            EventBus.getDefault().post(new MessageEvent(TAG, "detect preamble:  not found. use the max one. start:"+maxStartIdx+" end:"+maxEndIdx,"/UPDATE_STATUS"));
+                startIndexArray.add(maxStartIdx);
+                endIndexArray.add(maxEndIdx);
+
+            }
+
+            int maxIndex = 0;
+            double maxXcorrVal = 0.0;
+            for (int i = 0; i < startIndexArray.size(); i++) {
+                int start = startIndexArray.get(i);
+                int end = endIndexArray.get(i);
+//                Log.d(TAG, "onFileReceivedEvent: check chunk start:"+start+"end:"+end);
+                double[] candidate = chunk.getDoubleBuffer(start, end);
+                double xcorrVal = modem.detectPreamble(candidate);
+                if (xcorrVal > maxXcorrVal) {
+                    maxXcorrVal = xcorrVal;
+                    maxIndex = i;
+                }
+            }
+
+            if (maxXcorrVal < 0.05) {
+                return;
+            }
+
+
+            long windowingEnd = System.currentTimeMillis();
+            Log.d(TAG, "[DELAY] Windowing Xcorr:"+(windowingEnd-processingBegin));
+
+
+            if (state == REMOTE_MODULATED) {
+                String demodulated = modem.deModulate(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex));
+                // call demodulate
+            }
+
+            if (state == REMOTE_PREAMBLE) {
+                modem.channelProbing(chunk, startIndexArray.get(maxIndex), endIndexArray.get(maxIndex), minSPL);
+            }
+
+            long processingEnd = System.currentTimeMillis();
+            if (state == REMOTE_MODULATED) {
+                Log.d(TAG, "[DELAY]: Demodulation:"+(processingEnd-windowingEnd)+", Phase 2 Total:"+(processingEnd-processingBegin));
+            } else if (state == REMOTE_PREAMBLE) {
+                Log.d(TAG, "[DELAY]: Channel Probing:"+(processingEnd-windowingEnd)+", Phase 1 Total:"+(processingEnd-processingBegin));
+            }
+        }
+
     }
 
 
@@ -452,19 +638,20 @@ public class MainActivity extends WearableActivity implements SensorEventListene
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+        if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
             if (showSamplingRateAcc) {
                 samplingRateCtrAcc++;
                 if (samplingRateCtrAcc >= 50) {
                     long now = System.currentTimeMillis();
                     showSamplingRateAcc = false;
-                    Log.d(TAG, "onSensorChanged: acc sampling rate "+ samplingRateCtrAcc/ (now-sensorStartTime)/1000.0);
+                    Log.d(TAG, "onSensorChanged: acc sampling rate "+ (double)samplingRateCtrAcc/ ((double)(now-sensorStartTime)/1000.0) );
                 }
             }
 
             if (fosAcc!=null) {
                 try {
-                    fosAcc.write((event.values[0]+","+event.values[1]+","+event.values[2]+","+event.timestamp+"\n").getBytes());
+                    fosAcc.write(( Math.sqrt(Math.pow(event.values[0],2)+Math.pow(event.values[1],2)+Math.pow(event.values[2],2)) +","+event.timestamp+"\n").getBytes());
+//                    fosAcc.write((event.values[0]+","+event.values[1]+","+event.values[2]+","+event.timestamp+"\n").getBytes());
                 } catch (IOException e) {
                     e.printStackTrace();
                 }

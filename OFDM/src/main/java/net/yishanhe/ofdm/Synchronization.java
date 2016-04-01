@@ -28,27 +28,28 @@ public class Synchronization {
         int maxlag = Math.max(ref.length, input.length);
 
 
-        try {
-            PrintWriter pw = new PrintWriter("/sdcard/WearLock/xcorr_peak_dump.txt");
-            for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
-//            System.out.println(result[i]);
-                pw.println(result[i]);
-                if (result[i] > maxVal) {
-                    maxVal = result[i];
-                    delay = lag;
-                }
-            }
-            pw.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-//        for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
-//            if (result[i] > maxVal) {
-//                maxVal = result[i];
-//                delay = lag;
+//        try {
+//            PrintWriter pw = new PrintWriter("/sdcard/WearLock/xcorr_peak_dump.txt");
+//            for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
+////            System.out.println(result[i]);
+//                pw.println(result[i]);
+//                if (result[i] > maxVal) {
+//                    maxVal = result[i];
+//                    delay = lag;
+//                }
 //            }
+//            pw.close();
+//        } catch (Exception e) {
+//            e.printStackTrace();
 //        }
+
+
+        for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
+            if (result[i] > maxVal) {
+                maxVal = result[i];
+                delay = lag;
+            }
+        }
         System.out.println("synchronized: "+maxVal+", delay: "+delay);
         return delay;
     }

@@ -2,6 +2,7 @@ package net.yishanhe.ofdm;
 
 
 import net.yishanhe.utils.DSPUtils;
+import net.yishanhe.utils.IOUtils;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -95,30 +96,68 @@ public class Preamble {
 
     // @TODO: preamble detection
     public double detectPreamble(double[] input) {
-        double[] result = DSPUtils.xcorr(preamble, input, true);
+        double[] result = DSPUtils.xcorr(input, preamble, true);
 
         double maxVal = Double.MIN_VALUE;
         int maxlag = (result.length-1)/2;
+//        int delay = 0;
 
-//        try {
-//            PrintWriter pw = new PrintWriter("/sdcard/WearLock/xcorr_peak_dump.txt");
-            for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
-//            System.out.println(result[i]);
-//                pw.println(result[i]);
-                if (result[i] > maxVal) {
-                    maxVal = result[i];
-                }
+        for (int i = 0, lag=-maxlag; i < result.length; i++, lag++) {
+            if (result[i] > maxVal) {
+                maxVal = result[i];
+//                delay = i;
             }
-//            pw.close();
-//        } catch (Exception e) {
-//            e.printStackTrace();
+        }
+
+
+        // calculate delay spreading.
+
+//        double[] delayInput = new double[postPreambleGuardSize];
+//        if ((result.length-delay)<postPreambleGuardSize) {
+//            delay = result.length - postPreambleGuardSize;
 //        }
+//        System.arraycopy(result, delay, delayInput,0, postPreambleGuardSize);
+//        getRMSDelaySpreading(delayInput);
 
 
-
-//        ArrayList<Map<Integer, Double>> peaks = DSPUtils.peak_detection(result, );
-//        System.out.println(maxVal);
         return maxVal;
+
+    }
+
+    public static double[] scaleAbsDoubles(double[] input) {
+        double[] scaled = new double[input.length];
+        double maxVal = Double.MIN_VALUE;
+
+        for (int i = 0; i < input.length; i++) {
+            if (maxVal < input[i]) {
+                maxVal = input[i];
+            }
+        }
+
+        for (int i = 0; i < scaled.length; i++) {
+            scaled[i] = Math.abs(input[i]/maxVal);
+        }
+        return scaled;
+    }
+
+    private void getRMSDelaySpreading(double[] input) {
+        int len = input.length;
+        double[] scaled_input = scaleAbsDoubles(input);
+
+        double meanDelay = 0.0;
+        double rmsDelay = 0.0;
+        for (int j = 0; j<len; j++){
+            meanDelay += j*scaled_input[j];
+        }
+        meanDelay = meanDelay/postPreambleGuardSize;
+        System.out.println("Mean Delay Spreading: " + meanDelay);
+
+        for (int j = 0; j < postPreambleGuardSize; j++) {
+            rmsDelay += (j-meanDelay)*(j-meanDelay)*scaled_input[j];
+        }
+        System.out.println("RMS Delay Sum: " + rmsDelay);
+        rmsDelay = Math.pow( rmsDelay/postPreambleGuardSize ,0.5)/44100.0;
+        System.out.println("RMS Delay Spreading: " + rmsDelay);
 
     }
 

@@ -41,7 +41,8 @@ public class MainActivity extends AppCompatActivity {
     private FakeWearCommClient client = null;
 
     // Msg path
-    private static final String START_RECORDING = "/start_recording";
+    private static final String START_RECORDING_P1 = "/start_recording_p1";
+    private static final String START_RECORDING_P2 = "/start_recording_p2";
     private static final String STOP_RECORDING = "/stop_recording";
     private static final String SEND_RECORDING = "/send_recording";
     private static final String RECORDING_STARTED = "/RECORDING_STARTED";
@@ -106,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Subscribe
     public void onReceiveMessageEvent(ReceiveMessageEvent event){
-        if (event.getPath().equalsIgnoreCase(START_RECORDING)) {
+        if (event.getPath().equalsIgnoreCase(START_RECORDING_P1)||event.getPath().equalsIgnoreCase(START_RECORDING_P2)) {
             if (!isRecording) {
                 start();
                 EventBus.getDefault().post(new SendMessageEvent(RECORDING_STARTED));

@@ -16,7 +16,6 @@ import net.yishanhe.ofdm.Guard.GuardType;
 import net.yishanhe.ofdm.Preamble;
 import net.yishanhe.ofdm.Synchronization;
 import net.yishanhe.utils.DSPUtils;
-import net.yishanhe.wearlock.events.MessageEvent;
 
 import org.apache.commons.math3.complex.Complex;
 import org.greenrobot.eventbus.EventBus;
@@ -110,7 +109,7 @@ public class Modem {
         this.isAdaptiveModulationON = prefs.getBoolean("adaptive_mod",false);
         this.isChannelEstimationON = prefs.getBoolean("channel_est",false);
         this.isChannelTestModeON = prefs.getBoolean("channel_test_mode",false);
-        this.isDebugOutputON = prefs.getBoolean("debug_output",true);
+        this.isDebugOutputON = prefs.getBoolean("debug_output",false);
         this.isExperimentModeON  = prefs.getBoolean("experiment_mode", false);
         this.isChannelProbingON = prefs.getBoolean("channel_probing",false);
         this.guardSize = Integer.parseInt(prefs.getString("guard_size","128"));
@@ -139,9 +138,9 @@ public class Modem {
         preambleStartFreq = Double.valueOf(prefs.getString("preamble_start_freq","1000.0"));
         preambleFreqRange = Double.valueOf(prefs.getString("preamble_freq_range","1000.0"));
         postPreambleGuardSize = Integer.parseInt(prefs.getString("post_preamble_guard_size","2048"));
-        int modulationTypeIndex = Integer.parseInt(prefs.getString("modulation_type","0"));
+        int modulationTypeIndex = Integer.parseInt(prefs.getString("modulation_type","3"));
         this.modulationType = ModulationType.values()[modulationTypeIndex];
-        this.fftSize = Integer.parseInt(prefs.getString("fft_size","256"));
+        this.fftSize = Integer.parseInt(prefs.getString("fft_size","512"));
         this.volume = (int)(Double.valueOf(prefs.getString("volume","1.0"))*VOL_MAXIMUM);
         Log.d(TAG, "LoadParameter: parameters loaded.");
     }
@@ -201,9 +200,10 @@ public class Modem {
 
     }
 
-    public  void makeModulated(String inputPin) {
+    public  void makeModulated() {
 
-        if (isChannelTestModeON) {
+        String inputPin="";
+//        if (isChannelTestModeON) {
             if (modulationType == ModulationType.QPSK || modulationType == ModulationType.QASK) {
                 inputPin = "111111010101000000101010";
             }
@@ -216,8 +216,8 @@ public class Modem {
             if (modulationType == ModulationType.SixteenQAM) {
                 inputPin = "001001111101100010101111010100000001011010111100";
             }
-            EventBus.getDefault().post(new MessageEvent(TAG, inputPin, "/fixed_input"));
-        }
+//            EventBus.getDefault().post(new MessageEvent(TAG, inputPin, "/fixed_input"));
+//        }
 
         // @TODO: use the api in chunk class.
 
@@ -354,11 +354,7 @@ public class Modem {
                 pilotLocalEnergy = pilotLocalEnergy / pilotSubChannelIdx.size();
                 noiseLocalEnergy = noiseLocalEnergy / nullSubChannelIdx.size();
                 double preamblePSNR = 10*Math.log10((pilotLocalEnergy-noiseLocalEnergy)/noiseLocalEnergy);
-                EventBus.getDefault().post(new MessageEvent(TAG, "Preamble Pilot-SNR estimated: "+String.format("%.4f",preamblePSNR),"/UPDATE_STATUS"));
-                EventBus.getDefault().post(new MessageEvent(
-                        TAG,
-                        "Eb/N0 estimated: " + String.format("%.4f",preamblePSNR+10*Math.log10(4.0/(Math.log(constellation.getConstellationSize())/Math.log(2)))),
-                        "/UPDATE_STATUS"));
+
 
                 channel.setChannelBuffer(fftBuffer);
                 channel.estimate();
@@ -366,6 +362,7 @@ public class Modem {
                 channel.equalize();
 
                 if (isDebugOutputON) {
+
                     for (int j = 0; j < fftBuffer.length / 2; j++) {
                         if (channel.getDataSubChannelIdx().contains(j)) {
                             double phaseAngle = Math.atan2(fftBuffer[j].getImaginary(), fftBuffer[j].getReal());
@@ -385,6 +382,7 @@ public class Modem {
 
                     }
                 }
+
             }
         }
     }
